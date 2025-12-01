@@ -114,3 +114,30 @@ export interface AccountSummary {
 	total_expenses: number;
 	net_worth: number;
 }
+
+// ---- Budget Planning (YNAB-style) ----
+export interface CategoryBudget {
+	id: number;
+	category_id: number;
+	name: string;
+	assigned: number; // Amount assigned to this category
+	activity: number; // Amount spent (negative) or received (positive)
+	available: number; // assigned + activity + rollover
+	color?: string;
+	icon?: string;
+}
+
+export interface CategoryGroup {
+	id: number;
+	name: string;
+	assigned: number; // Sum of all categories
+	available: number; // Sum of all categories
+	categories: CategoryBudget[];
+	isExpanded: boolean;
+}
+
+export interface BudgetMonth {
+	month: string; // 'YYYY-MM'
+	readyToAssign: number; // Total available to budget
+	categoryGroups: CategoryGroup[];
+}
