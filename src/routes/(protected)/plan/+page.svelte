@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
 	import TransactionModal from '$lib/components/TransactionModal.svelte';
-	import { LoadingState } from '$lib/components';
+	import { LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
+	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 
 	// Current month state
 	let currentDate = $state(new Date());
@@ -23,7 +24,7 @@
 	let transactions = $state<Transaction[]>([]);
 
 	// Calculate spent per category (sum of negative transactions, shown as positive)
-	let spentByCategory = $derived(() => {
+	let spentByCategory = $derived.by(() => {
 		const spent = new Map<number, number>();
 		for (const t of transactions) {
 			if (t.amount < 0 && t.category_id) {
@@ -89,7 +90,7 @@
 				
 				// Calculate total spent for this group
 				const groupSpent = cats.reduce((total, cat) => {
-					return total + (spentByCategory().get(cat.id) || 0);
+					return total + (spentByCategory.get(cat.id) || 0);
 				}, 0);
 				
 				return {
@@ -152,15 +153,7 @@
 		}
 	}
 
-	// Format month for display  
-	const monthNames = [
-		'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-		'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-	];
-
-	let displayMonth = $derived(
-		`${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-	);
+	let displayMonth = $derived(formatMonthYear(currentDate));
 
 	// Ready to assign amount
 	let readyToAssign = $state(0);
@@ -172,43 +165,30 @@
 				: group
 		);
 	}
-
-	function formatCurrency(amount: number): string {
-		return amount.toFixed(2) + 'lei';
-	}
 </script>
 
 <div class="plan-page">
 	<!-- Header with month and actions -->
-	<header class="plan-header">
-		<button onclick={() => showMonthPicker = !showMonthPicker} class="month-selector">
-			{displayMonth}
-			<svg class="chevron" fill="currentColor" viewBox="0 0 20 20">
-				<path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+	<PageHeader title={displayMonth}>
+		<HeaderButton label="Filter categories">
+			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="9" stroke-width="2"/>
+				<line x1="8" y1="12" x2="16" y2="12" stroke-width="2"/>
 			</svg>
-		</button>
-		
-		<div class="header-actions">
-			<button aria-label="Filter categories" class="header-btn">
-				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<circle cx="12" cy="12" r="9" stroke-width="2"/>
-					<line x1="8" y1="12" x2="16" y2="12" stroke-width="2"/>
-				</svg>
-			</button>
-			<button aria-label="Edit categories" class="header-btn">
-				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-				</svg>
-			</button>
-			<button aria-label="More options" class="header-btn">
-				<svg fill="currentColor" viewBox="0 0 24 24">
-					<circle cx="12" cy="5" r="1.5"/>
-					<circle cx="12" cy="12" r="1.5"/>
-					<circle cx="12" cy="19" r="1.5"/>
-				</svg>
-			</button>
-		</div>
-	</header>
+		</HeaderButton>
+		<HeaderButton label="Edit categories">
+			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+			</svg>
+		</HeaderButton>
+		<HeaderButton label="More options">
+			<svg fill="currentColor" viewBox="0 0 24 24">
+				<circle cx="12" cy="5" r="1.5"/>
+				<circle cx="12" cy="12" r="1.5"/>
+				<circle cx="12" cy="19" r="1.5"/>
+			</svg>
+		</HeaderButton>
+	</PageHeader>
 
 	<!-- Ready to Assign Banner -->
 	<div class="banner-container">
@@ -256,7 +236,7 @@
 							<span class="category-name">{category.name}</span>
 							<div class="category-values">
 								<span class="category-spent">
-									{formatCurrency(spentByCategory().get(category.category_id) || 0)}
+									{formatCurrency(spentByCategory.get(category.category_id) || 0)}
 								</span>
 							</div>
 						</button>
@@ -268,12 +248,7 @@
 </div>
 
 <!-- Floating Action Button -->
-<button onclick={openTransactionModal} class="fab">
-	<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-	</svg>
-	<span>Transaction</span>
-</button>
+<FloatingActionButton onclick={openTransactionModal} label="Transaction" />
 
 <!-- Transaction Modal -->
 <TransactionModal
@@ -289,54 +264,6 @@
 		flex-direction: column;
 		height: calc(100vh - 70px);
 		height: calc(100dvh - 70px);
-	}
-
-	/* Header */
-	.plan-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-	}
-
-	.month-selector {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 20px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-		background: none;
-		border: none;
-		padding: 8px 0;
-		min-height: 44px;
-	}
-
-	.chevron {
-		width: 20px;
-		height: 20px;
-	}
-
-	.header-actions {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.header-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 44px;
-		height: 44px;
-		background: none;
-		border: none;
-		color: var(--color-text-secondary);
-	}
-
-	.header-btn svg {
-		width: 24px;
-		height: 24px;
 	}
 
 	/* Banner */
@@ -426,26 +353,6 @@
 		color: var(--color-text-primary);
 	}
 
-	.group-right {
-		display: flex;
-		gap: 24px;
-	}
-
-	.group-column {
-		text-align: right;
-	}
-
-	.column-label {
-		display: block;
-		font-size: 11px;
-		color: var(--color-text-muted);
-	}
-
-	.column-value {
-		font-size: 14px;
-		color: var(--color-text-primary);
-	}
-
 	/* Category Row */
 	.category-row {
 		display: flex;
@@ -488,30 +395,6 @@
 		text-align: center;
 		background-color: var(--color-bg-tertiary);
 		color: var(--color-text-primary);
-	}
-
-	/* FAB */
-	.fab {
-		position: fixed;
-		bottom: 84px;
-		right: 16px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 12px 20px;
-		background-color: var(--color-primary);
-		color: white;
-		border-radius: 24px;
-		text-decoration: none;
-		font-weight: 500;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		z-index: 50;
-		min-height: 48px;
-	}
-
-	.fab svg {
-		width: 20px;
-		height: 20px;
 	}
 
 	/* Error and Empty States */

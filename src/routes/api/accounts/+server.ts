@@ -2,16 +2,20 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAuth } from '$lib/server/middleware';
 import { accountSchema } from '$lib/server/validation';
+import { parseBody, verifyOwnership, createdResponse, successResponse, parseSearchParams } from '$lib/server/api-helpers';
 import db from '$lib/server/db';
 
 // GET /api/accounts - Get all accounts for the user
 export const GET: RequestHandler = async (event) => {
 	const user = requireAuth(event);
+	const params = parseSearchParams(event.url);
+	const includeInactive = params.getBoolean('includeInactive');
 
-	const result = await db.execute({
-		sql: 'SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY name ASC',
-		args: [user.userId]
-	});
+	const sql = includeInactive
+		? 'SELECT * FROM accounts WHERE user_id = ? ORDER BY name ASC'
+		: 'SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY name ASC';
+
+	const result = await db.execute({ sql, args: [user.userId] });
 
 	const accounts = result.rows.map((row) => ({
 		id: row.id,
@@ -27,20 +31,19 @@ export const GET: RequestHandler = async (event) => {
 		updated_at: row.updated_at
 	}));
 
-	return json({ accounts });
+	return successResponse({ accounts });
 };
 
 // POST /api/accounts - Create a new account
 export const POST: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const body = await event.request.json();
+	const data = await parseBody(event, accountSchema);
 
-	const parsed = accountSchema.safeParse(body);
-	if (!parsed.success) {
-		throw error(400, parsed.error.errors[0].message);
-	}
-
-	const { name, type, balance, currency, color, icon } = parsed.data;
+	const { name, type } = data;
+	const balance = data.balance ?? 0;
+	const currency = data.currency ?? 'RON';
+	const color = data.color ?? '#3B82F6';
+	const icon = data.icon ?? null;
 
 	// Check for duplicate name
 	const existing = await db.execute({
@@ -52,14 +55,12 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const result = await db.execute({
-		sql: `
-			INSERT INTO accounts (user_id, name, type, balance, currency, color, icon)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`,
-		args: [user.userId, name, type, balance, currency, color, icon || null]
+		sql: `INSERT INTO accounts (user_id, name, type, balance, currency, color, icon)
+			  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, name, type, balance, currency, color, icon]
 	});
 
-	return json({ id: Number(result.lastInsertRowid), message: 'Account created' }, { status: 201 });
+	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Account created' });
 };
 
 // PUT /api/accounts - Update an account
@@ -77,52 +78,41 @@ export const PUT: RequestHandler = async (event) => {
 		throw error(400, parsed.error.errors[0].message);
 	}
 
-	// Verify ownership
-	const check = await db.execute({
-		sql: 'SELECT id FROM accounts WHERE id = ? AND user_id = ?',
-		args: [id, user.userId]
-	});
-	if (check.rows.length === 0) {
-		throw error(404, 'Account not found');
-	}
+	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
 
-	const { name, type, balance, currency, color, icon } = parsed.data;
+	const { name, type } = parsed.data;
+	const balance = parsed.data.balance ?? 0;
+	const currency = parsed.data.currency ?? 'RON';
+	const color = parsed.data.color ?? '#3B82F6';
+	const icon = parsed.data.icon ?? null;
 
 	await db.execute({
-		sql: `
-			UPDATE accounts 
-			SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = ? AND user_id = ?
-		`,
-		args: [name, type, balance, currency, color, icon || null, id, user.userId]
+		sql: `UPDATE accounts 
+			  SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND user_id = ?`,
+		args: [name, type, balance, currency, color, icon, id, user.userId]
 	});
 
-	return json({ message: 'Account updated' });
+	return successResponse({ message: 'Account updated' });
 };
 
 // DELETE /api/accounts - Soft delete an account
 export const DELETE: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const id = event.url.searchParams.get('id');
+	const params = parseSearchParams(event.url);
+	const id = params.getInt('id');
 
 	if (!id) {
 		throw error(400, 'Account ID is required');
 	}
 
-	// Verify ownership
-	const check = await db.execute({
-		sql: 'SELECT id FROM accounts WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
-	});
-	if (check.rows.length === 0) {
-		throw error(404, 'Account not found');
-	}
+	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
 
 	// Soft delete
 	await db.execute({
 		sql: 'UPDATE accounts SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
+		args: [id, user.userId]
 	});
 
-	return json({ message: 'Account deleted' });
+	return successResponse({ message: 'Account deleted' });
 };

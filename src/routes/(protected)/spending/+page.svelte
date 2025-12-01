@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
-	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton } from '$lib/components';
+	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
 	import { formatDate, formatAmount } from '$lib/utils/format';
 
 	let loading = $state(true);
@@ -13,7 +13,7 @@
 	let showSearch = $state(false);
 	let showMenu = $state(false);
 
-	let groupedTransactions = $derived(() => {
+	let groupedTransactions = $derived.by(() => {
 		const filtered = transactions.filter(
 			(t) =>
 				t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -127,7 +127,7 @@
 				subtitle="Tap + to add your first transaction" 
 			/>
 		{:else}
-			{#each groupedTransactions() as [date, txs]}
+			{#each groupedTransactions as [date, txs]}
 				<div class="date-header">{formatDate(date)}</div>
 				{#each txs as tx}
 					<button class="transaction-row" onclick={() => openEditModal(tx)}>
@@ -165,12 +165,7 @@
 </div>
 
 <!-- Floating Action Button -->
-<button onclick={openAddModal} class="fab">
-	<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-	</svg>
-	<span>Transaction</span>
-</button>
+<FloatingActionButton onclick={openAddModal} label="Transaction" />
 
 <TransactionModal bind:show={showAddModal} {editingTransaction} {accounts} {categories} onSave={handleSaveTransaction} onDelete={handleDeleteTransaction} onClose={handleCloseModal} />
 
@@ -327,33 +322,5 @@
 		font-size: 12px;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
-	}
-
-	/* FAB */
-	.fab {
-		position: fixed;
-		bottom: 84px;
-		right: 16px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 12px 20px;
-		background-color: var(--color-primary);
-		color: white;
-		border: none;
-		border-radius: 24px;
-		font-weight: 500;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		z-index: 50;
-		min-height: 48px;
-	}
-
-	.fab:active {
-		transform: scale(0.96);
-	}
-
-	.fab svg {
-		width: 20px;
-		height: 20px;
 	}
 </style>

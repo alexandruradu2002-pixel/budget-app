@@ -45,97 +45,16 @@
 
 	async function loadAccounts() {
 		try {
-			// TODO: Load accounts from API
-			// Mock data to match the design
-			accounts = [
-				{
-					id: 1,
-					user_id: 1,
-					name: 'SALARIU',
-					type: 'cash',
-					balance: 1343.96,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				},
-				{
-					id: 2,
-					user_id: 1,
-					name: 'BANI',
-					type: 'cash',
-					balance: 2614.98,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				},
-				{
-					id: 3,
-					user_id: 1,
-					name: 'Depozit - Cash - Brd',
-					type: 'savings',
-					balance: 4381.00,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				},
-				{
-					id: 4,
-					user_id: 1,
-					name: 'Fond de Urgențe',
-					type: 'savings',
-					balance: 4500.00,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				},
-				{
-					id: 5,
-					user_id: 1,
-					name: 'Portofoliu - TRADING 212',
-					type: 'investment',
-					balance: 1920.00,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				},
-				{
-					id: 6,
-					user_id: 1,
-					name: 'Portofoliu - Tradeville',
-					type: 'investment',
-					balance: 581.50,
-					currency: 'RON',
-					color: '#10B981',
-					is_active: true,
-					created_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
-				}
-			];
-			
-			// Mock closed accounts
-			closedAccounts = [
-				{ id: 100, user_id: 1, name: 'Old Account 1', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 101, user_id: 1, name: 'Old Account 2', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 102, user_id: 1, name: 'Old Account 3', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 103, user_id: 1, name: 'Old Account 4', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 104, user_id: 1, name: 'Old Account 5', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 105, user_id: 1, name: 'Old Account 6', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-				{ id: 106, user_id: 1, name: 'Old Account 7', type: 'cash', balance: 0, currency: 'RON', color: '#666', is_active: false, created_at: '', updated_at: '' },
-			];
-			
-			loading = false;
+			const response = await fetch('/api/accounts');
+			if (response.ok) {
+				const data = await response.json();
+				const allAccounts = data.accounts || [];
+				accounts = allAccounts.filter((a: Account) => a.is_active);
+				closedAccounts = allAccounts.filter((a: Account) => !a.is_active);
+			}
 		} catch (error) {
 			console.error('Failed to load accounts:', error);
+		} finally {
 			loading = false;
 		}
 	}

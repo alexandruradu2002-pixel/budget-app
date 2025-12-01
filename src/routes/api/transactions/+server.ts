@@ -1,20 +1,22 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import type { InValue } from '@libsql/client';
 import { requireAuth } from '$lib/server/middleware';
 import { transactionSchema } from '$lib/server/validation';
+import { parseBody, parseSearchParams, verifyOwnership, successResponse, createdResponse } from '$lib/server/api-helpers';
 import db from '$lib/server/db';
 
 // GET /api/transactions - Get all transactions for the user
 export const GET: RequestHandler = async (event) => {
 	const user = requireAuth(event);
+	const params = parseSearchParams(event.url);
 
-	const url = event.url;
-	const limit = parseInt(url.searchParams.get('limit') || '100');
-	const offset = parseInt(url.searchParams.get('offset') || '0');
-	const startDate = url.searchParams.get('startDate');
-	const endDate = url.searchParams.get('endDate');
-	const accountId = url.searchParams.get('accountId');
-	const categoryId = url.searchParams.get('categoryId');
+	const limit = params.getInt('limit', 100)!;
+	const offset = params.getInt('offset', 0)!;
+	const startDate = params.getDate('startDate');
+	const endDate = params.getDate('endDate');
+	const accountId = params.getInt('accountId');
+	const categoryId = params.getInt('categoryId');
 
 	let sql = `
 		SELECT 
@@ -28,7 +30,7 @@ export const GET: RequestHandler = async (event) => {
 		LEFT JOIN categories c ON t.category_id = c.id
 		WHERE t.user_id = ?
 	`;
-	const args: any[] = [user.userId];
+	const args: InValue[] = [user.userId];
 
 	if (startDate) {
 		sql += ' AND t.date >= ?';
@@ -40,11 +42,11 @@ export const GET: RequestHandler = async (event) => {
 	}
 	if (accountId) {
 		sql += ' AND t.account_id = ?';
-		args.push(parseInt(accountId));
+		args.push(accountId);
 	}
 	if (categoryId) {
 		sql += ' AND t.category_id = ?';
-		args.push(parseInt(categoryId));
+		args.push(categoryId);
 	}
 
 	sql += ' ORDER BY t.date DESC, t.id DESC LIMIT ? OFFSET ?';
@@ -70,60 +72,35 @@ export const GET: RequestHandler = async (event) => {
 		category_type: row.category_type
 	}));
 
-	return json({ transactions });
+	return successResponse({ transactions });
 };
 
 // POST /api/transactions - Create a new transaction
 export const POST: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const body = await event.request.json();
+	const data = await parseBody(event, transactionSchema);
 
-	const parsed = transactionSchema.safeParse(body);
-	if (!parsed.success) {
-		throw error(400, parsed.error.errors[0].message);
-	}
-
-	const { account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags } = parsed.data;
+	const { account_id, amount, description, date } = data;
+	const category_id = data.category_id ?? null;
+	const payee = data.payee ?? null;
+	const memo = data.memo ?? null;
+	const flag = data.flag ?? null;
+	const cleared = data.cleared ?? 'uncleared';
+	const notes = data.notes ?? null;
+	const tags = data.tags ? JSON.stringify(data.tags) : null;
 
 	// Verify account belongs to user
-	const accountCheck = await db.execute({
-		sql: 'SELECT id FROM accounts WHERE id = ? AND user_id = ?',
-		args: [account_id, user.userId]
-	});
-	if (accountCheck.rows.length === 0) {
-		throw error(404, 'Account not found');
-	}
+	await verifyOwnership(db, 'accounts', account_id, user.userId, 'Account');
 
 	// Verify category belongs to user (only if category_id is provided)
 	if (category_id) {
-		const categoryCheck = await db.execute({
-			sql: 'SELECT id FROM categories WHERE id = ? AND user_id = ?',
-			args: [category_id, user.userId]
-		});
-		if (categoryCheck.rows.length === 0) {
-			throw error(404, 'Category not found');
-		}
+		await verifyOwnership(db, 'categories', category_id, user.userId, 'Category');
 	}
 
 	const result = await db.execute({
-		sql: `
-			INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
-		args: [
-			user.userId, 
-			account_id, 
-			category_id || null, 
-			amount, 
-			description, 
-			date, 
-			payee || null,
-			memo || null,
-			flag || null,
-			cleared || 'uncleared',
-			notes || null, 
-			tags ? JSON.stringify(tags) : null
-		]
+		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags]
 	});
 
 	// Update account balance
@@ -132,7 +109,7 @@ export const POST: RequestHandler = async (event) => {
 		args: [amount, account_id]
 	});
 
-	return json({ id: Number(result.lastInsertRowid), message: 'Transaction created' }, { status: 201 });
+	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Transaction created' });
 };
 
 // PUT /api/transactions - Update a transaction
@@ -161,7 +138,15 @@ export const PUT: RequestHandler = async (event) => {
 
 	const oldAmount = oldTx.rows[0].amount as number;
 	const oldAccountId = oldTx.rows[0].account_id as number;
-	const { account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags } = parsed.data;
+	
+	const { account_id, amount, description, date } = parsed.data;
+	const category_id = parsed.data.category_id ?? null;
+	const payee = parsed.data.payee ?? null;
+	const memo = parsed.data.memo ?? null;
+	const flag = parsed.data.flag ?? null;
+	const cleared = parsed.data.cleared ?? 'uncleared';
+	const notes = parsed.data.notes ?? null;
+	const tags = parsed.data.tags ? JSON.stringify(parsed.data.tags) : null;
 
 	// Revert old balance
 	await db.execute({
@@ -171,27 +156,11 @@ export const PUT: RequestHandler = async (event) => {
 
 	// Update transaction
 	await db.execute({
-		sql: `
-			UPDATE transactions 
-			SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, 
-				payee = ?, memo = ?, flag = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = ? AND user_id = ?
-		`,
-		args: [
-			account_id, 
-			category_id || null, 
-			amount, 
-			description, 
-			date, 
-			payee || null,
-			memo || null,
-			flag || null,
-			cleared || 'uncleared',
-			notes || null, 
-			tags ? JSON.stringify(tags) : null, 
-			id, 
-			user.userId
-		]
+		sql: `UPDATE transactions 
+			  SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, 
+				  payee = ?, memo = ?, flag = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+			  WHERE id = ? AND user_id = ?`,
+		args: [account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, id, user.userId]
 	});
 
 	// Apply new balance
@@ -200,14 +169,14 @@ export const PUT: RequestHandler = async (event) => {
 		args: [amount, account_id]
 	});
 
-	return json({ message: 'Transaction updated' });
+	return successResponse({ message: 'Transaction updated' });
 };
 
 // DELETE /api/transactions - Delete a transaction
 export const DELETE: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const url = event.url;
-	const id = url.searchParams.get('id');
+	const params = parseSearchParams(event.url);
+	const id = params.getInt('id');
 
 	if (!id) {
 		throw error(400, 'Transaction ID is required');
@@ -216,7 +185,7 @@ export const DELETE: RequestHandler = async (event) => {
 	// Get transaction to revert balance
 	const tx = await db.execute({
 		sql: 'SELECT amount, account_id FROM transactions WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
+		args: [id, user.userId]
 	});
 	if (tx.rows.length === 0) {
 		throw error(404, 'Transaction not found');
@@ -228,7 +197,7 @@ export const DELETE: RequestHandler = async (event) => {
 	// Delete transaction
 	await db.execute({
 		sql: 'DELETE FROM transactions WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
+		args: [id, user.userId]
 	});
 
 	// Revert balance
@@ -237,5 +206,5 @@ export const DELETE: RequestHandler = async (event) => {
 		args: [amount, accountId]
 	});
 
-	return json({ message: 'Transaction deleted' });
+	return successResponse({ message: 'Transaction deleted' });
 };

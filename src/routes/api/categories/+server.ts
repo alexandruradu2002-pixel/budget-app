@@ -1,17 +1,19 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import type { InValue } from '@libsql/client';
 import { requireAuth } from '$lib/server/middleware';
 import { categorySchema } from '$lib/server/validation';
+import { parseBody, parseSearchParams, verifyOwnership, successResponse, createdResponse } from '$lib/server/api-helpers';
 import db from '$lib/server/db';
 
 // GET /api/categories - Get all categories for the user
 export const GET: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-
-	const type = event.url.searchParams.get('type'); // 'expense' | 'income'
+	const params = parseSearchParams(event.url);
+	const type = params.getString('type'); // 'expense' | 'income'
 
 	let sql = 'SELECT * FROM categories WHERE user_id = ? AND is_active = 1';
-	const args: any[] = [user.userId];
+	const args: InValue[] = [user.userId];
 
 	if (type) {
 		sql += ' AND type = ?';
@@ -36,20 +38,18 @@ export const GET: RequestHandler = async (event) => {
 		created_at: row.created_at
 	}));
 
-	return json({ categories });
+	return successResponse({ categories });
 };
 
 // POST /api/categories - Create a new category
 export const POST: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const body = await event.request.json();
+	const data = await parseBody(event, categorySchema);
 
-	const parsed = categorySchema.safeParse(body);
-	if (!parsed.success) {
-		throw error(400, parsed.error.errors[0].message);
-	}
-
-	const { name, type, color, icon, parent_id } = parsed.data;
+	const { name, type } = data;
+	const color = data.color ?? '#6B7280';
+	const icon = data.icon ?? null;
+	const parent_id = data.parent_id ?? null;
 
 	// Check for duplicate name
 	const existing = await db.execute({
@@ -61,14 +61,12 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const result = await db.execute({
-		sql: `
-			INSERT INTO categories (user_id, name, type, color, icon, parent_id)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`,
-		args: [user.userId, name, type, color, icon || null, parent_id || null]
+		sql: `INSERT INTO categories (user_id, name, type, color, icon, parent_id)
+			  VALUES (?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, name, type, color, icon, parent_id]
 	});
 
-	return json({ id: Number(result.lastInsertRowid), message: 'Category created' }, { status: 201 });
+	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Category created' });
 };
 
 // PUT /api/categories - Update a category
@@ -86,52 +84,40 @@ export const PUT: RequestHandler = async (event) => {
 		throw error(400, parsed.error.errors[0].message);
 	}
 
-	// Verify ownership
-	const check = await db.execute({
-		sql: 'SELECT id FROM categories WHERE id = ? AND user_id = ?',
-		args: [id, user.userId]
-	});
-	if (check.rows.length === 0) {
-		throw error(404, 'Category not found');
-	}
+	await verifyOwnership(db, 'categories', id, user.userId, 'Category');
 
-	const { name, type, color, icon, parent_id } = parsed.data;
+	const { name, type } = parsed.data;
+	const color = parsed.data.color ?? '#6B7280';
+	const icon = parsed.data.icon ?? null;
+	const parent_id = parsed.data.parent_id ?? null;
 
 	await db.execute({
-		sql: `
-			UPDATE categories 
-			SET name = ?, type = ?, color = ?, icon = ?, parent_id = ?
-			WHERE id = ? AND user_id = ?
-		`,
-		args: [name, type, color, icon || null, parent_id || null, id, user.userId]
+		sql: `UPDATE categories 
+			  SET name = ?, type = ?, color = ?, icon = ?, parent_id = ?
+			  WHERE id = ? AND user_id = ?`,
+		args: [name, type, color, icon, parent_id, id, user.userId]
 	});
 
-	return json({ message: 'Category updated' });
+	return successResponse({ message: 'Category updated' });
 };
 
 // DELETE /api/categories - Soft delete a category
 export const DELETE: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const id = event.url.searchParams.get('id');
+	const params = parseSearchParams(event.url);
+	const id = params.getInt('id');
 
 	if (!id) {
 		throw error(400, 'Category ID is required');
 	}
 
-	// Verify ownership
-	const check = await db.execute({
-		sql: 'SELECT id FROM categories WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
-	});
-	if (check.rows.length === 0) {
-		throw error(404, 'Category not found');
-	}
+	await verifyOwnership(db, 'categories', id, user.userId, 'Category');
 
 	// Soft delete
 	await db.execute({
 		sql: 'UPDATE categories SET is_active = 0 WHERE id = ? AND user_id = ?',
-		args: [parseInt(id), user.userId]
+		args: [id, user.userId]
 	});
 
-	return json({ message: 'Category deleted' });
+	return successResponse({ message: 'Category deleted' });
 };

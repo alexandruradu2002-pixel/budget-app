@@ -5,11 +5,20 @@
 SvelteKit 5 + Turso (cloud SQLite) + Tailwind 4, deployed on Vercel.
 
 ```
-src/lib/server/         → Server-only (db.ts, auth.ts, middleware.ts, validation.ts)
-src/lib/components/     → Reusable UI components (exported via index.ts)
-src/lib/utils/          → Client utilities (format.ts for currency/dates)
-src/routes/api/         → REST endpoints (+server.ts)
-src/routes/(protected)/ → Auth-required pages (dashboard, accounts, spending, plan, reports)
+src/lib/
+├── server/           → Server-only (db.ts, auth.ts, middleware.ts, validation.ts, api-helpers.ts)
+├── components/       → Reusable UI (exported via index.ts)
+│   ├── ui/           → Generic primitives (Button, Alert, PageHeader, FAB)
+│   └── settings/     → Feature-specific (YNABImport)
+├── stores/           → Global state (toast.svelte.ts, user.svelte.ts)
+├── utils/            → Client utilities (format.ts)
+├── constants.ts      → App-wide constants (ACCOUNT_TYPES, PRESET_COLORS, etc.)
+├── types.ts          → TypeScript interfaces
+└── index.ts          → Barrel export for all above
+
+src/routes/
+├── api/              → REST endpoints (+server.ts)
+└── (protected)/      → Auth-required pages (dashboard, accounts, spending, plan, reports)
 ```
 
 **Data flow**: Svelte page → `fetch('/api/...')` → API route → `db.execute()` → Turso
@@ -31,45 +40,71 @@ Use runes - **NOT** legacy `$:` or `export let`:
 
 ## API Routes Pattern
 
-All endpoints in `src/routes/api/` follow this structure:
+All endpoints use helpers from `$lib/server/api-helpers`:
 
 ```typescript
-import { json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireAuth } from '$lib/server/middleware';
 import { transactionSchema } from '$lib/server/validation';
+import { parseBody, parseSearchParams, verifyOwnership, successResponse, createdResponse } from '$lib/server/api-helpers';
 import db from '$lib/server/db';
 
 export const GET: RequestHandler = async (event) => {
-  const user = requireAuth(event);  // Throws 401 if unauthenticated
-  const result = await db.execute({
-    sql: 'SELECT * FROM transactions WHERE user_id = ?',
-    args: [user.userId]
-  });
-  return json({ transactions: result.rows });
+  const user = requireAuth(event);
+  const params = parseSearchParams(event.url);
+  const limit = params.getInt('limit', 50);
+  // ... query with db.execute()
+  return successResponse({ data });
 };
 
 export const POST: RequestHandler = async (event) => {
   const user = requireAuth(event);
-  const parsed = transactionSchema.safeParse(await event.request.json());
-  if (!parsed.success) return json({ error: parsed.error }, { status: 400 });
-  // Insert with parameterized query...
+  const data = await parseBody(event, transactionSchema);  // Validates with Zod
+  await verifyOwnership(db, 'accounts', data.account_id, user.userId, 'Account');
+  // ... insert
+  return createdResponse({ id, message: 'Created' });
 };
 ```
+
+**Available helpers**: `parseBody()`, `parseSearchParams()`, `verifyOwnership()`, `successResponse()`, `createdResponse()`, `handleDbError()`
 
 ## Database
 
 Direct SQL via `@libsql/client` - **no ORM**. Always parameterized:
 
 ```typescript
-await db.execute({ sql: 'SELECT * FROM accounts WHERE user_id = ?', args: [userId] });
+import type { InValue } from '@libsql/client';
+const args: InValue[] = [userId, name];  // Use InValue type for args
+await db.execute({ sql: 'SELECT * FROM accounts WHERE user_id = ? AND name = ?', args });
 ```
 
 **Tables**: `users`, `sessions`, `accounts`, `categories`, `transactions`, `budgets`, `budget_allocations`  
 **Schema**: `src/lib/server/db.ts` → `initializeDatabase()`  
-**Types**: `src/lib/types.ts`  
 **Validation**: `src/lib/server/validation.ts` (Zod schemas)
 
-**Dev mode**: Falls back to in-memory SQLite if no Turso credentials (data won't persist).
+## Constants & Types
+
+Use constants from `$lib/constants` instead of hardcoding:
+
+```typescript
+import { ACCOUNT_TYPES, DEFAULT_CURRENCY, PRESET_COLORS, CATEGORY_TYPES } from '$lib/constants';
+// Types available: AccountTypeValue, CategoryTypeValue, ClearedStatusValue
+```
+
+## Global State (Stores)
+
+Svelte 5 runes-based stores in `$lib/stores`:
+
+```typescript
+import { toast, userStore } from '$lib/stores';
+
+// Toast notifications
+toast.success('Saved!');
+toast.error('Failed to save');
+
+// User session
+if (userStore.isAuthenticated) { /* ... */ }
+```
 
 ## Theming - CSS Variables Only
 
@@ -85,59 +120,56 @@ await db.execute({ sql: 'SELECT * FROM accounts WHERE user_id = ?', args: [userI
 
 **Available**: `--color-primary`, `--color-primary-hover`, `--color-bg-{primary,secondary,tertiary}`, `--color-text-{primary,secondary,muted}`, `--color-{success,danger,warning}`, `--color-border`
 
-## Mobile-First UI
-
-App uses fixed bottom nav (64px) - content needs `padding-bottom: 70px`.
-
-```svelte
-<!-- ✅ Mobile-first responsive -->
-<div class="flex flex-col gap-2 p-4 md:flex-row md:gap-4">
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-<!-- Touch targets: min 44px height -->
-<button class="min-h-[44px] px-4 py-3">
-```
-
-**Layout**: `src/routes/(protected)/+layout.svelte`
-
 ## Components
 
 Import from `$lib/components` (barrel export):
 
 ```svelte
-import { LoadingState, PageHeader, HeaderButton, Button, Alert } from '$lib/components';
+<script lang="ts">
+  import { 
+    LoadingState, EmptyState, PageHeader, HeaderButton, 
+    FloatingActionButton, Button, Alert, StatCard,
+    TransactionModal, CategorySelector, AccountSelector, PayeeSelector,
+    YNABImport  // Settings components also exported
+  } from '$lib/components';
+</script>
 ```
 
-## Formatting Utilities
+## Mobile-First UI
 
-Use `$lib/utils/format` for consistent display:
+App uses fixed bottom nav (64px) - content needs `padding-bottom: 70px`. Touch targets min 44px.
+
+```svelte
+<div class="flex flex-col gap-2 p-4 md:flex-row md:gap-4">
+<button class="min-h-[44px] px-4 py-3">
+```
+
+## Formatting
 
 ```typescript
-import { formatCurrency, formatDate, formatMonthYear } from '$lib/utils/format';
+import { formatCurrency, formatDate, formatAmount } from '$lib/utils/format';
 formatCurrency(1234.56);  // "1.234,56 lei" (Romanian locale)
-formatDate('2025-12-01'); // "1 December 2025"
 ```
 
 ## Auth Mode
 
-**Currently single-user** - `hooks.server.ts` auto-authenticates as user ID 1. To enable multi-user login, uncomment session logic in that file.
+**Currently single-user** - `hooks.server.ts` auto-authenticates as user ID 1. For multi-user, uncomment session logic there.
 
 ## Commands
 
 ```bash
-npm run dev    # Dev server (auto-seeds sample data on first request)
+npm run dev    # Dev server (auto-seeds sample data)
 npm run check  # TypeScript + svelte-check
 npm run build  # Production build
 ```
 
-## Key Files Reference
+## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/hooks.server.ts` | Auth middleware, database seeding |
-| `src/lib/server/db.ts` | Turso client, schema init |
+| `src/lib/index.ts` | Main barrel export (types, constants, stores, components, utils) |
+| `src/lib/server/api-helpers.ts` | API route helpers (parseBody, verifyOwnership, etc.) |
+| `src/lib/constants.ts` | App-wide constants and type definitions |
+| `src/lib/stores/` | Global state (toast, user) |
 | `src/lib/server/validation.ts` | Zod schemas for all entities |
-| `src/lib/server/middleware.ts` | `requireAuth()`, `requireRole()` |
-| `src/lib/types.ts` | TypeScript interfaces |
-| `src/lib/components/index.ts` | Component exports |
 | `src/routes/layout.css` | Theme CSS variables |

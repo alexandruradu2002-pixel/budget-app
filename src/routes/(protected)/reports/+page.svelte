@@ -1,17 +1,14 @@
 <script lang="ts">
+	import { PageHeader, HeaderButton } from '$lib/components';
+	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
+	
 	// Reports/Reflect page
 	let loading = $state(false);
 
 	// Current month state
 	let currentDate = $state(new Date());
-	const monthNames = [
-		'January', 'February', 'March', 'April', 'May', 'June',
-		'July', 'August', 'September', 'October', 'November', 'December'
-	];
 
-	let displayMonth = $derived(
-		`${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-	);
+	let displayMonth = $derived(formatMonthYear(currentDate));
 
 	// Mock data
 	const spendingTotal = 349.00;
@@ -48,26 +45,19 @@
 		{ month: 'Nov', value: 20 },
 		{ month: 'Dec', value: 21 }
 	];
-
-	function formatCurrency(amount: number): string {
-		return amount.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'lei';
-	}
 </script>
 
 <div class="reports-page">
 	<!-- Header -->
-	<header class="reports-header">
-		<h1 class="page-title">Reflect</h1>
-		<div class="header-actions">
-			<button aria-label="More options" class="header-btn">
-				<svg fill="currentColor" viewBox="0 0 24 24">
-					<circle cx="12" cy="5" r="1.5"/>
-					<circle cx="12" cy="12" r="1.5"/>
-					<circle cx="12" cy="19" r="1.5"/>
-				</svg>
-			</button>
-		</div>
-	</header>
+	<PageHeader title="Reflect">
+		<HeaderButton label="More options">
+			<svg fill="currentColor" viewBox="0 0 24 24">
+				<circle cx="12" cy="5" r="1.5"/>
+				<circle cx="12" cy="12" r="1.5"/>
+				<circle cx="12" cy="19" r="1.5"/>
+			</svg>
+		</HeaderButton>
+	</PageHeader>
 
 	<div class="reports-content">
 		<!-- Spending Breakdown Card -->
@@ -242,47 +232,6 @@
 		min-height: calc(100vh - 70px);
 		min-height: calc(100dvh - 70px);
 		padding-bottom: 24px;
-	}
-
-	/* Header */
-	.reports-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-	}
-
-	.page-title {
-		font-size: 24px;
-		font-weight: 700;
-		color: var(--color-text-primary);
-	}
-
-	.header-actions {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.header-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 44px;
-		height: 44px;
-		background: none;
-		border: none;
-		color: var(--color-text-secondary);
-		border-radius: 12px;
-	}
-
-	.header-btn:active {
-		background-color: var(--color-bg-tertiary);
-	}
-
-	.header-btn svg {
-		width: 24px;
-		height: 24px;
 	}
 
 	/* Content */
