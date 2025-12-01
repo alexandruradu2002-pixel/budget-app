@@ -10,3 +10,26 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vercel
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+.turso/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Testing
+coverage/
+
+# OS
+Thumbs.db
+*.swp
+*.swo

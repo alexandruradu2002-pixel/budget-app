@@ -1,8 +1,6 @@
 // Database client and schema initialization
 import { createClient } from '@libsql/client';
-
-const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL;
-const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN;
+import { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } from '$env/static/private';
 
 // Use in-memory SQLite if credentials are missing (dev/test mode)
 const useMockDb = !TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN;
