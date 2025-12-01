@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+	/* Default theme: Midnight Blue */
+	--color-primary: #3B82F6;
+	--color-primary-hover: #2563EB;
+	--color-bg-primary: #0F172A;
+	--color-bg-secondary: #1E293B;
+	--color-bg-tertiary: #334155;
+	--color-text-primary: #F8FAFC;
+	--color-text-secondary: #CBD5E1;
+	--color-text-muted: #94A3B8;
+	--color-border: #334155;
+	--color-success: #10B981;
+	--color-danger: #EF4444;
+	--color-warning: #F59E0B;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	background: var(--color-bg-primary);
+	color: var(--color-text-primary);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--color-bg-tertiary);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-border);
+}

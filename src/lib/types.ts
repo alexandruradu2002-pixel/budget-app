@@ -1,0 +1,116 @@
+// ============================================
+// Types - Budget App
+// ============================================
+
+// ---- Users & Auth ----
+export interface User {
+	id: number;
+	email: string;
+	name: string;
+	password_hash: string;
+	roles: string[]; // ['user', 'admin']
+	created_at: string;
+}
+
+export interface Session {
+	id: string;
+	userId: number;
+	email: string;
+	name: string;
+	roles: string[];
+	expiresAt: Date;
+}
+
+// ---- Accounts ----
+export type AccountType = 'checking' | 'savings' | 'credit_card' | 'cash' | 'investment' | 'other';
+
+export interface Account {
+	id: number;
+	user_id: number;
+	name: string; // "Bank of America Checking"
+	type: AccountType;
+	balance: number; // Current balance
+	currency: string; // 'USD', 'EUR', 'RON'
+	color: string; // Hex color for UI
+	icon?: string; // Icon name
+	is_active: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+// ---- Categories ----
+export type CategoryType = 'expense' | 'income';
+
+export interface Category {
+	id: number;
+	user_id: number;
+	name: string; // "Groceries", "Salary"
+	type: CategoryType;
+	color: string; // Hex color
+	icon?: string;
+	parent_id?: number; // For subcategories
+	is_active: boolean;
+	created_at: string;
+}
+
+// ---- Transactions ----
+export interface Transaction {
+	id: number;
+	user_id: number;
+	account_id: number;
+	category_id: number;
+	amount: number; // Positive for income, negative for expense
+	description: string;
+	date: string; // YYYY-MM-DD
+	notes?: string;
+	tags?: string[]; // ['recurring', 'tax-deductible']
+	created_at: string;
+	updated_at: string;
+
+	// Joined data
+	account_name?: string;
+	category_name?: string;
+	category_color?: string;
+}
+
+// ---- Budgets ----
+export interface Budget {
+	id: number;
+	user_id: number;
+	category_id: number;
+	amount: number; // Budget limit
+	period: string; // 'monthly', 'weekly', 'yearly'
+	start_date: string; // YYYY-MM-DD
+	end_date?: string; // Optional end date
+	is_active: boolean;
+	created_at: string;
+
+	// Computed
+	spent?: number; // Amount spent in current period
+	remaining?: number;
+	percentage?: number; // spent / amount * 100
+}
+
+// ---- Reports ----
+export interface SpendingByCategory {
+	category_id: number;
+	category_name: string;
+	category_color: string;
+	total: number;
+	count: number;
+	percentage: number;
+}
+
+export interface MonthlyTrend {
+	month: string; // 'YYYY-MM'
+	income: number;
+	expenses: number;
+	net: number;
+}
+
+export interface AccountSummary {
+	total_balance: number;
+	total_income: number;
+	total_expenses: number;
+	net_worth: number;
+}

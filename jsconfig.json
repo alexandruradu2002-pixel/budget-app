@@ -1,0 +1,22 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": false,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": false,
+		"module": "ESNext",
+		"target": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ESNext", "DOM"]
+	},
+	"include": [
+		"src/**/*.js"
+	],
+	"exclude": [
+		"node_modules"
+	]
+}
