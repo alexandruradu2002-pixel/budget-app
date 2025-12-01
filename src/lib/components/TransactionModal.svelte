@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
+	import PayeeSelector from './PayeeSelector.svelte';
 
 	// Props
 	let {
@@ -18,7 +19,7 @@
 		amount: '0.00',
 		date: new Date().toISOString().split('T')[0],
 		account_id: 0,
-		category_id: 0,
+		category_id: 0 as number | undefined,
 		notes: '',
 		isInflow: false,
 		isCleared: false,
@@ -26,8 +27,12 @@
 	});
 
 	// Calculator state
-	let calcDisplay = $state('0.00');
-	let calcHasDecimal = $state(true);
+	let calcDisplay = $state('0');
+	let calcHasDecimal = $state(false);
+	let isNewInput = $state(true);
+
+	// Payee selector state
+	let showPayeeSelector = $state(false);
 
 	// Initialize form when modal opens or editingTransaction changes
 	$effect(() => {
@@ -46,7 +51,8 @@
 					flag: 'none'
 				};
 				calcDisplay = amount.toFixed(2);
-				calcHasDecimal = true;
+				calcHasDecimal = calcDisplay.includes('.');
+				isNewInput = false;
 			} else {
 				formData = {
 					description: '',
@@ -59,18 +65,24 @@
 					isCleared: false,
 					flag: 'none'
 				};
-				calcDisplay = '0.00';
-				calcHasDecimal = true;
+				calcDisplay = '0';
+				calcHasDecimal = false;
+				isNewInput = true;
 			}
 		}
 	});
 
 	// Calculator functions
 	function calcInput(digit: string) {
-		if (calcDisplay === '0.00' || calcDisplay === '0') {
+		if (isNewInput || calcDisplay === '0') {
 			calcDisplay = digit;
-			calcHasDecimal = false;
+			isNewInput = false;
 		} else {
+			// Limit decimal places to 2
+			if (calcHasDecimal) {
+				const parts = calcDisplay.split('.');
+				if (parts[1] && parts[1].length >= 2) return;
+			}
 			calcDisplay += digit;
 		}
 		updateAmountFromCalc();
@@ -78,7 +90,12 @@
 
 	function calcDecimal() {
 		if (!calcHasDecimal) {
-			calcDisplay += '.';
+			if (isNewInput) {
+				calcDisplay = '0.';
+				isNewInput = false;
+			} else {
+				calcDisplay += '.';
+			}
 			calcHasDecimal = true;
 		}
 		updateAmountFromCalc();
@@ -90,15 +107,17 @@
 			if (removed === '.') calcHasDecimal = false;
 			calcDisplay = calcDisplay.slice(0, -1);
 		} else {
-			calcDisplay = '0.00';
-			calcHasDecimal = true;
+			calcDisplay = '0';
+			calcHasDecimal = false;
+			isNewInput = true;
 		}
 		updateAmountFromCalc();
 	}
 
 	function calcClear() {
-		calcDisplay = '0.00';
-		calcHasDecimal = true;
+		calcDisplay = '0';
+		calcHasDecimal = false;
+		isNewInput = true;
 		updateAmountFromCalc();
 	}
 
@@ -110,6 +129,18 @@
 	function calcDone() {
 		const num = parseFloat(calcDisplay) || 0;
 		formData.amount = num.toFixed(2);
+	}
+
+	// Formatted display amount with sign
+	let displayAmount = $derived(() => {
+		const num = parseFloat(formData.amount) || 0;
+		const sign = formData.isInflow ? '+' : '−';
+		return `${sign}${num.toFixed(2)}lei`;
+	});
+
+	// Handle payee selection
+	function handlePayeeSelect(payee: string) {
+		formData.description = payee;
 	}
 
 	// Save transaction
@@ -198,23 +229,22 @@
 			<!-- Form Fields -->
 			<div class="form-card">
 				<!-- Payee -->
-				<div class="form-row">
+				<button type="button" class="form-row" onclick={() => showPayeeSelector = true}>
 					<div class="form-icon primary">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 						</svg>
 					</div>
 					<div class="form-field">
-						<label for="payee-input" class="field-label">Payee</label>
-						<input
-							id="payee-input"
-							type="text"
-							bind:value={formData.description}
-							placeholder="Enter payee name"
-							class="field-input"
-						/>
+						<span class="field-label">Payee</span>
+						<span class="field-value" class:placeholder={!formData.description}>
+							{formData.description || 'Enter payee name'}
+						</span>
 					</div>
-				</div>
+					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+					</svg>
+				</button>
 
 				<!-- Category -->
 				<div class="form-row">
@@ -385,7 +415,7 @@
 				<button type="button" onclick={calcDone} class="calc-btn equals">=</button>
 				
 				<!-- Row 4 -->
-				<div class="calc-spacer"></div>
+				<button type="button" onclick={calcDecimal} class="calc-btn number">.</button>
 				<button type="button" onclick={() => calcInput('0')} class="calc-btn number">0</button>
 				<button type="button" aria-label="Backspace" onclick={calcBackspace} class="calc-btn backspace">
 					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -397,6 +427,13 @@
 		</div>
 	</div>
 {/if}
+
+<!-- Payee Selector Modal -->
+<PayeeSelector 
+	bind:show={showPayeeSelector}
+	selectedPayee={formData.description}
+	onSelect={handlePayeeSelect}
+/>
 
 <style>
 	.modal-overlay {
@@ -526,6 +563,17 @@
 		gap: 16px;
 		padding: 14px 16px;
 		border-bottom: 1px solid var(--color-border);
+		background: none;
+		border-left: none;
+		border-right: none;
+		border-top: none;
+		width: 100%;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.form-row:active {
+		background-color: var(--color-bg-tertiary);
 	}
 
 	.form-row.no-border {
@@ -633,6 +681,11 @@
 		font-size: 15px;
 		font-weight: 500;
 		color: var(--color-text-primary);
+	}
+
+	.field-value.placeholder {
+		color: var(--color-text-muted);
+		font-weight: 400;
 	}
 
 	.field-muted {
@@ -803,9 +856,5 @@
 
 	.calc-btn.done:active {
 		background-color: var(--color-primary-hover);
-	}
-
-	.calc-spacer {
-		height: 48px;
 	}
 </style>

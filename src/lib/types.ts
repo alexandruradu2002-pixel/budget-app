@@ -34,6 +34,7 @@ export interface Account {
 	color: string; // Hex color for UI
 	icon?: string; // Icon name
 	is_active: boolean;
+	ynab_account_name?: string; // Original YNAB account name
 	created_at: string;
 	updated_at: string;
 }
@@ -49,21 +50,31 @@ export interface Category {
 	color: string; // Hex color
 	icon?: string;
 	parent_id?: number; // For subcategories
+	group_name?: string; // YNAB Category Group (e.g., "MANCARE", "EU", "Subscriptions")
 	is_active: boolean;
+	is_hidden: boolean; // For hidden categories from YNAB
 	created_at: string;
 }
 
 // ---- Transactions ----
+export type ClearedStatus = 'cleared' | 'uncleared' | 'reconciled';
+
 export interface Transaction {
 	id: number;
 	user_id: number;
 	account_id: number;
-	category_id: number;
+	category_id?: number; // Optional for transfers
 	amount: number; // Positive for income, negative for expense
 	description: string;
 	date: string; // YYYY-MM-DD
+	payee?: string; // YNAB payee field
+	memo?: string; // YNAB memo field
+	flag?: string; // YNAB flag color
+	cleared?: ClearedStatus; // YNAB cleared status
+	transfer_account_id?: number; // For transfer transactions
 	notes?: string;
 	tags?: string[]; // ['recurring', 'tax-deductible']
+	ynab_import_id?: string; // Unique ID for duplicate detection
 	created_at: string;
 	updated_at: string;
 
@@ -71,6 +82,7 @@ export interface Transaction {
 	account_name?: string;
 	category_name?: string;
 	category_color?: string;
+	category_group?: string;
 }
 
 // ---- Budgets ----
@@ -140,4 +152,21 @@ export interface BudgetMonth {
 	month: string; // 'YYYY-MM'
 	readyToAssign: number; // Total available to budget
 	categoryGroups: CategoryGroup[];
+}
+
+// ---- Budget Allocations (YNAB Plan.csv) ----
+export interface BudgetAllocation {
+	id: number;
+	user_id: number;
+	category_id: number;
+	month: string; // 'YYYY-MM' format
+	assigned: number; // Amount budgeted for this month
+	activity: number; // Spending/income in this month
+	available: number; // Running balance
+	created_at: string;
+	updated_at: string;
+
+	// Joined data
+	category_name?: string;
+	category_group?: string;
 }

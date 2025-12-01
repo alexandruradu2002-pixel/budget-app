@@ -21,9 +21,10 @@ export const accountSchema = z.object({
 	name: z.string().min(1, 'Account name is required'),
 	type: z.enum(['checking', 'savings', 'credit_card', 'cash', 'investment', 'other']),
 	balance: z.number().default(0),
-	currency: z.string().default('USD'),
+	currency: z.string().default('RON'),
 	color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').default('#3B82F6'),
-	icon: z.string().optional()
+	icon: z.string().optional(),
+	ynab_account_name: z.string().optional()
 });
 
 // ============================================
@@ -34,7 +35,9 @@ export const categorySchema = z.object({
 	type: z.enum(['expense', 'income']),
 	color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').default('#6B7280'),
 	icon: z.string().optional(),
-	parent_id: z.number().optional()
+	parent_id: z.number().optional(),
+	group_name: z.string().optional(),
+	is_hidden: z.boolean().default(false)
 });
 
 // ============================================
@@ -42,12 +45,18 @@ export const categorySchema = z.object({
 // ============================================
 export const transactionSchema = z.object({
 	account_id: z.number().int().positive(),
-	category_id: z.number().int().positive(),
+	category_id: z.number().int().positive().optional(), // Optional for transfers
 	amount: z.number(),
 	description: z.string().min(1, 'Description is required'),
 	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+	payee: z.string().optional(),
+	memo: z.string().optional(),
+	flag: z.string().optional(),
+	cleared: z.enum(['cleared', 'uncleared', 'reconciled']).optional(),
+	transfer_account_id: z.number().int().positive().optional(),
 	notes: z.string().optional(),
-	tags: z.array(z.string()).optional()
+	tags: z.array(z.string()).optional(),
+	ynab_import_id: z.string().optional()
 });
 
 // ============================================
@@ -58,4 +67,15 @@ export const budgetSchema = z.object({
 	amount: z.number().positive(),
 	period: z.enum(['weekly', 'monthly', 'yearly']).default('monthly'),
 	start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+});
+
+// ============================================
+// Budget Allocation Validation (YNAB Plan)
+// ============================================
+export const budgetAllocationSchema = z.object({
+	category_id: z.number().int().positive(),
+	month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be YYYY-MM'),
+	assigned: z.number().default(0),
+	activity: z.number().default(0),
+	available: z.number().default(0)
 });

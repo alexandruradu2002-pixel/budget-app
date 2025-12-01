@@ -3,6 +3,12 @@ export { default as LoadingState } from './ui/LoadingState.svelte';
 export { default as EmptyState } from './ui/EmptyState.svelte';
 export { default as PageHeader } from './ui/PageHeader.svelte';
 export { default as HeaderButton } from './ui/HeaderButton.svelte';
+export { default as FileUpload } from './ui/FileUpload.svelte';
+export { default as SettingsSection } from './ui/SettingsSection.svelte';
+export { default as StatCard } from './ui/StatCard.svelte';
+export { default as Button } from './ui/Button.svelte';
+export { default as Alert } from './ui/Alert.svelte';
 
 // Feature Components
 export { default as TransactionModal } from './TransactionModal.svelte';
+export { default as PayeeSelector } from './PayeeSelector.svelte';

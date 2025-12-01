@@ -58,17 +58,18 @@ export async function initializeDatabase() {
 			name TEXT NOT NULL,
 			type TEXT NOT NULL CHECK(type IN ('checking', 'savings', 'credit_card', 'cash', 'investment', 'other')),
 			balance REAL DEFAULT 0,
-			currency TEXT DEFAULT 'USD',
+			currency TEXT DEFAULT 'RON',
 			color TEXT DEFAULT '#3B82F6',
 			icon TEXT,
 			is_active BOOLEAN DEFAULT 1,
+			ynab_account_name TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)
 	`);
 
-	// Categories table
+	// Categories table (supports YNAB hierarchy: Category Group → Category)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS categories (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,34 +79,43 @@ export async function initializeDatabase() {
 			color TEXT DEFAULT '#6B7280',
 			icon TEXT,
 			parent_id INTEGER,
+			group_name TEXT,
 			is_active BOOLEAN DEFAULT 1,
+			is_hidden BOOLEAN DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
 		)
 	`);
 
-	// Transactions table
+	// Transactions table (with YNAB fields)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS transactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
 			account_id INTEGER NOT NULL,
-			category_id INTEGER NOT NULL,
+			category_id INTEGER,
 			amount REAL NOT NULL,
 			description TEXT NOT NULL,
 			date TEXT NOT NULL,
+			payee TEXT,
+			memo TEXT,
+			flag TEXT,
+			cleared TEXT CHECK(cleared IN ('cleared', 'uncleared', 'reconciled')),
+			transfer_account_id INTEGER,
 			notes TEXT,
 			tags TEXT,
+			ynab_import_id TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+			FOREIGN KEY (transfer_account_id) REFERENCES accounts(id) ON DELETE SET NULL
 		)
 	`);
 
-	// Budgets table
+	// Budgets table (monthly targets)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS budgets (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,13 +132,36 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// Budget Allocations table (YNAB Plan.csv - monthly assigned amounts)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS budget_allocations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			category_id INTEGER NOT NULL,
+			month TEXT NOT NULL,
+			assigned REAL DEFAULT 0,
+			activity REAL DEFAULT 0,
+			available REAL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+			UNIQUE(user_id, category_id, month)
+		)
+	`);
+
 	// Create indexes
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_group ON categories(group_name)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_payee ON transactions(payee)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_ynab_import ON transactions(ynab_import_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_user_id ON budget_allocations(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_month ON budget_allocations(month)');
 
 	console.log('✅ Database schema initialized');
 }
