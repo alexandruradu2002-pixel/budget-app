@@ -150,18 +150,86 @@ export async function initializeDatabase() {
 		)
 	`);
 
-	// Create indexes
+	// Create indexes (only for columns that always exist)
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id)');
-	await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_group ON categories(group_name)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
-	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_payee ON transactions(payee)');
-	await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_ynab_import ON transactions(ynab_import_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_user_id ON budget_allocations(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_month ON budget_allocations(month)');
+
+	// Migrations: Add missing columns to existing tables
+	// Categories migrations
+	try {
+		await db.execute('ALTER TABLE categories ADD COLUMN group_name TEXT');
+		console.log('✅ Added group_name column to categories');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE categories ADD COLUMN is_hidden BOOLEAN DEFAULT 0');
+		console.log('✅ Added is_hidden column to categories');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	// Transactions migrations (YNAB fields)
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN payee TEXT');
+		console.log('✅ Added payee column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN memo TEXT');
+		console.log('✅ Added memo column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN flag TEXT');
+		console.log('✅ Added flag column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN cleared TEXT');
+		console.log('✅ Added cleared column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN ynab_import_id TEXT');
+		console.log('✅ Added ynab_import_id column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	// Create indexes for migrated columns (after migrations)
+	try {
+		await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_group ON categories(group_name)');
+	} catch {
+		// Index already exists or column missing, ignore
+	}
+
+	try {
+		await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_payee ON transactions(payee)');
+	} catch {
+		// Index already exists or column missing, ignore
+	}
+
+	try {
+		await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_ynab_import ON transactions(ynab_import_id)');
+	} catch {
+		// Index already exists or column missing, ignore
+	}
 
 	console.log('✅ Database schema initialized');
 }

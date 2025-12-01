@@ -1,65 +1,57 @@
 <script lang="ts">
+	import type { Account } from '$lib/types';
+	import { formatCurrency } from '$lib/utils/format';
+
 	// Props
 	let {
 		show = $bindable(false),
-		selectedPayee = $bindable(''),
-		onSelect = (payee: string) => {},
+		selectedAccountId = $bindable(0),
+		onSelect = (account: Account) => {},
 		onClose = () => {}
 	} = $props();
 
 	// State
 	let searchQuery = $state('');
-	let payees = $state<{ name: string; usage_count: number }[]>([]);
+	let accounts = $state<Account[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 
-	// Load payees when modal opens
+	// Filter accounts by search
+	let filteredAccounts = $derived(() => {
+		if (!searchQuery) return accounts;
+		return accounts.filter(a => 
+			a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			a.type.toLowerCase().includes(searchQuery.toLowerCase())
+		);
+	});
+
+	// Load accounts when modal opens
 	$effect(() => {
 		if (show) {
-			loadPayees();
+			loadAccounts();
 		}
 	});
 
-	// Search with debounce
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	$effect(() => {
-		if (show) {
-			clearTimeout(searchTimeout);
-			searchTimeout = setTimeout(() => {
-				loadPayees(searchQuery);
-			}, 300);
-		}
-	});
-
-	async function loadPayees(search = '') {
+	async function loadAccounts() {
 		loading = true;
 		error = '';
 		try {
-			const url = search 
-				? `/api/payees?search=${encodeURIComponent(search)}`
-				: '/api/payees';
-			const res = await fetch(url);
-			if (!res.ok) throw new Error('Failed to load payees');
+			const res = await fetch('/api/accounts');
+			if (!res.ok) throw new Error('Failed to load accounts');
 			const data = await res.json();
-			payees = data.payees || [];
+			accounts = data.accounts || [];
 		} catch (e) {
-			error = 'Could not load payees';
+			error = 'Could not load accounts';
 			console.error(e);
 		} finally {
 			loading = false;
 		}
 	}
 
-	function selectPayee(name: string) {
-		selectedPayee = name;
-		onSelect(name);
+	function selectAccount(account: Account) {
+		selectedAccountId = account.id;
+		onSelect(account);
 		closeModal();
-	}
-
-	function useCustomPayee() {
-		if (searchQuery.trim()) {
-			selectPayee(searchQuery.trim());
-		}
 	}
 
 	function closeModal() {
@@ -71,6 +63,28 @@
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
 			closeModal();
+		}
+	}
+
+	function getAccountTypeIcon(type: string): string {
+		switch (type) {
+			case 'checking': return 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z';
+			case 'savings': return 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z';
+			case 'credit_card': return 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z';
+			case 'cash': return 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z';
+			case 'investment': return 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6';
+			default: return 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z';
+		}
+	}
+
+	function getAccountTypeLabel(type: string): string {
+		switch (type) {
+			case 'checking': return 'Checking';
+			case 'savings': return 'Savings';
+			case 'credit_card': return 'Credit Card';
+			case 'cash': return 'Cash';
+			case 'investment': return 'Investment';
+			default: return 'Other';
 		}
 	}
 </script>
@@ -86,7 +100,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</button>
-			<h2 class="modal-title">Select Payee</h2>
+			<h2 class="modal-title">Select Account</h2>
 			<div class="header-spacer"></div>
 		</header>
 
@@ -99,7 +113,7 @@
 				<input
 					type="text"
 					bind:value={searchQuery}
-					placeholder="Search or enter new payee..."
+					placeholder="Search accounts..."
 					class="search-input"
 				/>
 				{#if searchQuery}
@@ -117,68 +131,51 @@
 			{#if loading}
 				<div class="loading-state">
 					<div class="spinner"></div>
-					<span>Loading payees...</span>
+					<span>Loading accounts...</span>
 				</div>
 			{:else if error}
 				<div class="error-state">
 					<p>{error}</p>
-					<button onclick={() => loadPayees(searchQuery)} class="retry-btn">Try Again</button>
+					<button onclick={() => loadAccounts()} class="retry-btn">Try Again</button>
+				</div>
+			{:else if filteredAccounts().length === 0}
+				<div class="empty-state">
+					<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+					</svg>
+					<p class="empty-title">No accounts found</p>
+					<p class="empty-text">
+						{searchQuery ? 'Try a different search term' : 'Add some accounts to get started'}
+					</p>
 				</div>
 			{:else}
-				<!-- Add New Payee option if searching -->
-				{#if searchQuery.trim() && !payees.some(p => p.name.toLowerCase() === searchQuery.trim().toLowerCase())}
-					<button class="payee-item new-payee" onclick={useCustomPayee}>
-						<div class="payee-icon add">
-							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-							</svg>
-						</div>
-						<div class="payee-info">
-							<span class="payee-name">Add "{searchQuery.trim()}"</span>
-							<span class="payee-hint">Create new payee</span>
-						</div>
-					</button>
-				{/if}
-
-				<!-- Payees List -->
-				{#if payees.length > 0}
-					<div class="payees-list">
-						{#each payees as payee (payee.name)}
-							<button 
-								class="payee-item"
-								class:selected={selectedPayee === payee.name}
-								onclick={() => selectPayee(payee.name)}
-							>
-								<div class="payee-icon">
-									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-									</svg>
-								</div>
-								<div class="payee-info">
-									<span class="payee-name">{payee.name}</span>
-									<span class="payee-count">{payee.usage_count} transaction{payee.usage_count !== 1 ? 's' : ''}</span>
-								</div>
-								{#if selectedPayee === payee.name}
-									<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-									</svg>
-								{/if}
-							</button>
-						{/each}
-					</div>
-				{:else if !searchQuery}
-					<div class="empty-state">
-						<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-						</svg>
-						<p class="empty-title">No payees yet</p>
-						<p class="empty-text">Start typing to add your first payee</p>
-					</div>
-				{:else}
-					<div class="empty-state">
-						<p class="empty-text">No matching payees found</p>
-					</div>
-				{/if}
+				<!-- Accounts List -->
+				<div class="accounts-list">
+					{#each filteredAccounts() as account (account.id)}
+						<button 
+							class="account-item"
+							class:selected={selectedAccountId === account.id}
+							onclick={() => selectAccount(account)}
+						>
+							<div class="account-icon" style="background-color: {account.color || 'var(--color-primary)'}">
+								<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d={getAccountTypeIcon(account.type)} />
+								</svg>
+							</div>
+							<div class="account-info">
+								<span class="account-name">{account.name}</span>
+								<span class="account-details">
+									{getAccountTypeLabel(account.type)} • {formatCurrency(account.balance)}
+								</span>
+							</div>
+							{#if selectedAccountId === account.id}
+								<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+								</svg>
+							{/if}
+						</button>
+					{/each}
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -188,7 +185,7 @@
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 300;
+		z-index: 210;
 		background-color: var(--color-bg-primary);
 		display: flex;
 		flex-direction: column;
@@ -294,13 +291,13 @@
 		overflow-y: auto;
 	}
 
-	/* Payees List */
-	.payees-list {
+	/* Accounts List */
+	.accounts-list {
 		display: flex;
 		flex-direction: column;
 	}
 
-	.payee-item {
+	.account-item {
 		display: flex;
 		align-items: center;
 		gap: 16px;
@@ -313,54 +310,43 @@
 		cursor: pointer;
 	}
 
-	.payee-item:active {
+	.account-item:active {
 		background-color: var(--color-bg-secondary);
 	}
 
-	.payee-item.selected {
+	.account-item.selected {
 		background-color: var(--color-bg-secondary);
 	}
 
-	.payee-item.new-payee {
-		background-color: var(--color-bg-secondary);
-	}
-
-	.payee-icon {
-		width: 40px;
-		height: 40px;
+	.account-icon {
+		width: 44px;
+		height: 44px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background-color: var(--color-bg-tertiary);
-		border-radius: 50%;
-		color: var(--color-text-muted);
+		border-radius: 12px;
+		color: white;
 		flex-shrink: 0;
 	}
 
-	.payee-icon.add {
-		background-color: var(--color-primary);
-		color: white;
+	.account-icon svg {
+		width: 22px;
+		height: 22px;
 	}
 
-	.payee-icon svg {
-		width: 20px;
-		height: 20px;
-	}
-
-	.payee-info {
+	.account-info {
 		flex: 1;
 		min-width: 0;
 	}
 
-	.payee-name {
+	.account-name {
 		display: block;
 		font-size: 16px;
 		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
-	.payee-count,
-	.payee-hint {
+	.account-details {
 		display: block;
 		font-size: 13px;
 		color: var(--color-text-muted);

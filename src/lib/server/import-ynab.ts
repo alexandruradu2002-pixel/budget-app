@@ -318,7 +318,7 @@ export async function importYNABData(
 			if (groupName === 'Inflow') continue;
 
 			const existing = await db.execute({
-				sql: 'SELECT id FROM categories WHERE user_id = ? AND name = ? AND parent_id IS NULL',
+				sql: 'SELECT id FROM categories WHERE user_id = ? AND name = ? AND parent_id IS NULL AND group_name IS NULL',
 				args: [userId, groupName]
 			});
 
@@ -326,8 +326,8 @@ export async function importYNABData(
 				categoryGroupMap.set(groupName, existing.rows[0].id as number);
 			} else {
 				const insertResult = await db.execute({
-					sql: `INSERT INTO categories (user_id, name, type, color, parent_id, is_active)
-                  VALUES (?, ?, 'expense', ?, NULL, 1)`,
+					sql: `INSERT INTO categories (user_id, name, type, color, parent_id, group_name, is_active)
+                  VALUES (?, ?, 'expense', ?, NULL, NULL, 1)`,
 					args: [userId, groupName, getCategoryColor(groupName)]
 				});
 				categoryGroupMap.set(groupName, Number(insertResult.lastInsertRowid));
@@ -349,8 +349,8 @@ export async function importYNABData(
 			incomeCategoryId = existingIncome.rows[0].id as number;
 		} else {
 			const incomeResult = await db.execute({
-				sql: `INSERT INTO categories (user_id, name, type, color, parent_id, is_active)
-              VALUES (?, 'Income', 'income', '#10B981', NULL, 1)`,
+				sql: `INSERT INTO categories (user_id, name, type, color, parent_id, group_name, is_active)
+              VALUES (?, 'Income', 'income', '#10B981', NULL, 'Inflow', 1)`,
 				args: [userId]
 			});
 			incomeCategoryId = Number(incomeResult.lastInsertRowid);
@@ -377,10 +377,11 @@ export async function importYNABData(
 				categoryMap.set(key, existing.rows[0].id as number);
 				result.categories.existing++;
 			} else {
+				// Create subcategory with group_name set for easy grouping in Plan page
 				const insertResult = await db.execute({
-					sql: `INSERT INTO categories (user_id, name, type, color, parent_id, is_active)
-                  VALUES (?, ?, 'expense', ?, ?, 1)`,
-					args: [userId, t.category, getCategoryColor(t.categoryGroup), parentId]
+					sql: `INSERT INTO categories (user_id, name, type, color, parent_id, group_name, is_active)
+                  VALUES (?, ?, 'expense', ?, ?, ?, 1)`,
+					args: [userId, t.category, getCategoryColor(t.categoryGroup), parentId, t.categoryGroup]
 				});
 				categoryMap.set(key, Number(insertResult.lastInsertRowid));
 				result.categories.created++;

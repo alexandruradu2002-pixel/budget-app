@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { CategoryGroup, Account, Category } from '$lib/types';
+	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
 	import TransactionModal from '$lib/components/TransactionModal.svelte';
+	import { LoadingState } from '$lib/components';
 
 	// Current month state
 	let currentDate = $state(new Date());
@@ -11,39 +12,141 @@
 	let accounts = $state<Account[]>([]);
 	let categories = $state<Category[]>([]);
 
+	// Loading state
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+
+	// Category groups from API
+	let categoryGroups = $state<CategoryGroup[]>([]);
+
+	// Transactions for the current month
+	let transactions = $state<Transaction[]>([]);
+
+	// Calculate spent per category (sum of negative transactions, shown as positive)
+	let spentByCategory = $derived(() => {
+		const spent = new Map<number, number>();
+		for (const t of transactions) {
+			if (t.amount < 0 && t.category_id) {
+				const current = spent.get(t.category_id) || 0;
+				spent.set(t.category_id, current + Math.abs(t.amount));
+			}
+		}
+		return spent;
+	});
+
+	// Load categories and build groups
+	async function loadCategories() {
+		loading = true;
+		error = null;
+		try {
+			// Get current month's start and end dates
+			const year = currentDate.getFullYear();
+			const month = currentDate.getMonth();
+			const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+			const lastDay = new Date(year, month + 1, 0).getDate();
+			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+			// Fetch categories and transactions in parallel
+			const [catRes, transRes] = await Promise.all([
+				fetch('/api/categories'),
+				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`)
+			]);
+
+			if (!catRes.ok) throw new Error('Failed to load categories');
+			
+			const catData = await catRes.json();
+			categories = catData.categories || [];
+			
+			if (transRes.ok) {
+				const transData = await transRes.json();
+				transactions = transData.transactions || [];
+			}
+			
+			// Group categories by group_name
+			const groupMap = new Map<string, Category[]>();
+			
+			for (const cat of categories) {
+				const groupName = cat.group_name || 'Uncategorized';
+				if (!groupMap.has(groupName)) {
+					groupMap.set(groupName, []);
+				}
+				groupMap.get(groupName)!.push(cat);
+			}
+			
+			// Convert to CategoryGroup array
+			let groupId = 1;
+			categoryGroups = Array.from(groupMap.entries()).map(([name, cats]) => {
+				const categoryBudgets: CategoryBudget[] = cats.map(cat => ({
+					id: cat.id,
+					category_id: cat.id,
+					name: cat.name,
+					assigned: 0,
+					activity: 0,
+					available: 0,
+					color: cat.color,
+					icon: cat.icon
+				}));
+				
+				// Calculate total spent for this group
+				const groupSpent = cats.reduce((total, cat) => {
+					return total + (spentByCategory().get(cat.id) || 0);
+				}, 0);
+				
+				return {
+					id: groupId++,
+					name,
+					assigned: groupSpent,  // Using assigned to store spent for the group
+					available: 0,
+					categories: categoryBudgets,
+					isExpanded: true
+				};
+			});
+		} catch (e) {
+			console.error('Failed to load categories:', e);
+			error = e instanceof Error ? e.message : 'Failed to load categories';
+		} finally {
+			loading = false;
+		}
+	}
+
+	// Load data on mount
+	$effect(() => {
+		loadCategories();
+	});
+
 	// Load accounts and categories for the modal
 	async function loadModalData() {
 		try {
-			const [accountsRes, categoriesRes] = await Promise.all([
-				fetch('/api/accounts'),
-				fetch('/api/categories')
-			]);
+			const accountsRes = await fetch('/api/accounts');
 			if (accountsRes.ok) {
 				const data = await accountsRes.json();
 				accounts = data.accounts || [];
-			}
-			if (categoriesRes.ok) {
-				const data = await categoriesRes.json();
-				categories = data.categories || [];
 			}
 		} catch (e) {
 			console.error('Failed to load modal data:', e);
 		}
 	}
 
-	function openTransactionModal() {
-		loadModalData();
+	async function openTransactionModal() {
+		await loadModalData();
 		showTransactionModal = true;
 	}
 
 	async function handleSaveTransaction(payload: any) {
 		try {
+			console.log('Sending payload to API:', payload);
 			const res = await fetch('/api/transactions', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
 			});
-			if (!res.ok) throw new Error('Failed to save');
+			if (!res.ok) {
+				const errorData = await res.json().catch(() => ({}));
+				console.error('API Error:', res.status, errorData);
+				throw new Error(errorData.message || 'Failed to save');
+			}
+			// Reload categories to update spent amounts
+			await loadCategories();
 		} catch (e) {
 			console.error('Failed to save transaction:', e);
 		}
@@ -60,53 +163,7 @@
 	);
 
 	// Ready to assign amount
-	let readyToAssign = $state(3413.94);
-
-	// Category groups with mock data (will be replaced with API data)
-	let categoryGroups = $state<CategoryGroup[]>([
-		{
-			id: 1,
-			name: 'MANCARE',
-			assigned: 349.00,
-			available: 0.00,
-			isExpanded: true,
-			categories: [
-				{ id: 1, category_id: 1, name: 'SuperMarchet', assigned: 49.00, activity: -49.00, available: 0.00 },
-				{ id: 2, category_id: 2, name: 'Foodpanda/Glovo/Tazz', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 3, category_id: 3, name: 'Restaurant/Cantina', assigned: 300.00, activity: -300.00, available: 0.00 }
-			]
-		},
-		{
-			id: 2,
-			name: 'EU',
-			assigned: 0.00,
-			available: 545.00,
-			isExpanded: true,
-			categories: [
-				{ id: 4, category_id: 4, name: 'Pets', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 5, category_id: 5, name: 'Apartament', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 6, category_id: 6, name: 'Shopping - Online/ Fizic', assigned: 0.00, activity: 0.00, available: 545.00 },
-				{ id: 7, category_id: 7, name: 'Sport', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 8, category_id: 8, name: 'Vacanță', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 9, category_id: 9, name: 'Masina', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 10, category_id: 10, name: 'Ieșiri', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 11, category_id: 11, name: 'Investing', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 12, category_id: 12, name: 'Games', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 13, category_id: 13, name: 'Cadouri', assigned: 0.00, activity: 0.00, available: 0.00 }
-			]
-		},
-		{
-			id: 3,
-			name: 'Subscriptions',
-			assigned: 0.00,
-			available: 0.00,
-			isExpanded: true,
-			categories: [
-				{ id: 14, category_id: 14, name: '100GB GOOGLE', assigned: 0.00, activity: 0.00, available: 0.00 },
-				{ id: 15, category_id: 15, name: 'YNAB', assigned: 0.00, activity: 0.00, available: 0.00 }
-			]
-		}
-	]);
+	let readyToAssign = $state(0);
 
 	function toggleGroup(groupId: number) {
 		categoryGroups = categoryGroups.map(group => 
@@ -118,12 +175,6 @@
 
 	function formatCurrency(amount: number): string {
 		return amount.toFixed(2) + 'lei';
-	}
-
-	function getAvailableClass(available: number): string {
-		if (available > 0) return 'available-positive';
-		if (available < 0) return 'available-negative';
-		return 'available-zero';
 	}
 </script>
 
@@ -174,42 +225,45 @@
 
 	<!-- Category Groups List -->
 	<div class="categories-list">
-		{#each categoryGroups as group (group.id)}
-			<!-- Group Header -->
-			<button onclick={() => toggleGroup(group.id)} class="group-header">
-				<div class="group-left">
-					<svg class="group-chevron" class:collapsed={!group.isExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-					</svg>
-					<span class="group-name">{group.name}</span>
-				</div>
-				<div class="group-right">
-					<div class="group-column">
-						<span class="column-label">Assigned</span>
-						<span class="column-value">{formatCurrency(group.assigned)}</span>
+		{#if loading}
+			<LoadingState message="Loading categories..." />
+		{:else if error}
+			<div class="error-state">
+				<p>{error}</p>
+				<button onclick={loadCategories} class="retry-btn">Retry</button>
+			</div>
+		{:else if categoryGroups.length === 0}
+			<div class="empty-state">
+				<p>No categories yet</p>
+				<p class="empty-hint">Import from YNAB or create categories in Settings</p>
+			</div>
+		{:else}
+			{#each categoryGroups as group (group.id)}
+				<!-- Group Header -->
+				<button onclick={() => toggleGroup(group.id)} class="group-header">
+					<div class="group-left">
+						<svg class="group-chevron" class:collapsed={!group.isExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+						</svg>
+						<span class="group-name">{group.name}</span>
 					</div>
-					<div class="group-column">
-						<span class="column-label">Available</span>
-						<span class="column-value">{formatCurrency(group.available)}</span>
-					</div>
-				</div>
-			</button>
+				</button>
 
-			<!-- Category Items -->
-			{#if group.isExpanded}
-				{#each group.categories as category (category.id)}
-					<button class="category-row">
-						<span class="category-name">{category.name}</span>
-						<div class="category-values">
-							<span class="category-assigned">{formatCurrency(category.assigned)}</span>
-							<span class="category-available {getAvailableClass(category.available)}">
-								{formatCurrency(category.available)}
-							</span>
-						</div>
-					</button>
-				{/each}
-			{/if}
-		{/each}
+				<!-- Category Items -->
+				{#if group.isExpanded}
+					{#each group.categories as category (category.id)}
+						<button class="category-row">
+							<span class="category-name">{category.name}</span>
+							<div class="category-values">
+								<span class="category-spent">
+									{formatCurrency(spentByCategory().get(category.category_id) || 0)}
+								</span>
+							</div>
+						</button>
+					{/each}
+				{/if}
+			{/each}
+		{/if}
 	</div>
 </div>
 
@@ -422,39 +476,18 @@
 	.category-values {
 		display: flex;
 		align-items: center;
-		gap: 12px;
 		flex-shrink: 0;
 	}
 
-	.category-assigned {
-		font-size: 14px;
-		color: var(--color-text-secondary);
-		min-width: 60px;
-		text-align: right;
-	}
-
-	.category-available {
+	.category-spent {
 		padding: 4px 10px;
 		border-radius: 8px;
 		font-size: 12px;
 		font-weight: 500;
 		min-width: 65px;
 		text-align: center;
-	}
-
-	.available-positive {
-		background-color: var(--color-primary);
-		color: white;
-	}
-
-	.available-negative {
-		background-color: var(--color-danger);
-		color: white;
-	}
-
-	.available-zero {
 		background-color: var(--color-bg-tertiary);
-		color: var(--color-text-muted);
+		color: var(--color-text-primary);
 	}
 
 	/* FAB */
@@ -479,5 +512,45 @@
 	.fab svg {
 		width: 20px;
 		height: 20px;
+	}
+
+	/* Error and Empty States */
+	.error-state,
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 48px 24px;
+		text-align: center;
+		color: var(--color-text-secondary);
+	}
+
+	.error-state p,
+	.empty-state p {
+		margin: 0;
+		font-size: 16px;
+	}
+
+	.empty-hint {
+		margin-top: 8px !important;
+		font-size: 14px !important;
+		color: var(--color-text-muted);
+	}
+
+	.retry-btn {
+		margin-top: 16px;
+		padding: 10px 20px;
+		background-color: var(--color-primary);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-weight: 500;
+		cursor: pointer;
+		min-height: 44px;
+	}
+
+	.retry-btn:hover {
+		background-color: var(--color-primary-hover);
 	}
 </style>

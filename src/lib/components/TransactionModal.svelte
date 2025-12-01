@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
 	import PayeeSelector from './PayeeSelector.svelte';
+	import CategorySelector from './CategorySelector.svelte';
+	import AccountSelector from './AccountSelector.svelte';
 
 	// Props
 	let {
@@ -30,9 +32,25 @@
 	let calcDisplay = $state('0');
 	let calcHasDecimal = $state(false);
 	let isNewInput = $state(true);
+	let showCalculator = $state(false);
 
 	// Payee selector state
 	let showPayeeSelector = $state(false);
+
+	// Category selector state
+	let showCategorySelector = $state(false);
+
+	// Account selector state
+	let showAccountSelector = $state(false);
+
+	// Date picker state
+	let showDatePicker = $state(false);
+	let calendarMonth = $state(new Date().getMonth());
+	let calendarYear = $state(new Date().getFullYear());
+
+	// Selected names for display
+	let selectedCategoryName = $state('');
+	let selectedAccountName = $state('');
 
 	// Initialize form when modal opens or editingTransaction changes
 	$effect(() => {
@@ -53,6 +71,11 @@
 				calcDisplay = amount.toFixed(2);
 				calcHasDecimal = calcDisplay.includes('.');
 				isNewInput = false;
+				// Set display names for editing
+				const cat = categories.find(c => c.id === editingTransaction.category_id);
+				selectedCategoryName = cat?.name || '';
+				const acc = accounts.find(a => a.id === editingTransaction.account_id);
+				selectedAccountName = acc?.name || '';
 			} else {
 				formData = {
 					description: '',
@@ -68,6 +91,9 @@
 				calcDisplay = '0';
 				calcHasDecimal = false;
 				isNewInput = true;
+				// Set default display names
+				selectedCategoryName = categories[0]?.name || '';
+				selectedAccountName = accounts[0]?.name || '';
 			}
 		}
 	});
@@ -143,21 +169,143 @@
 		formData.description = payee;
 	}
 
+	// Handle category selection
+	function handleCategorySelect(category: Category) {
+		formData.category_id = category.id;
+		selectedCategoryName = category.name;
+	}
+
+	// Handle account selection
+	function handleAccountSelect(account: Account) {
+		formData.account_id = account.id;
+		selectedAccountName = account.name;
+	}
+
+	// Formatted date display (DD.MM.YYYY)
+	let formattedDate = $derived(() => {
+		const [year, month, day] = formData.date.split('-');
+		return `${day}.${month}.${year}`;
+	});
+
+	// Calendar helpers
+	function getDaysInMonth(year: number, month: number): number {
+		return new Date(year, month + 1, 0).getDate();
+	}
+
+	function getFirstDayOfMonth(year: number, month: number): number {
+		// Return 0 for Monday, 6 for Sunday (European week starts Monday)
+		const day = new Date(year, month, 1).getDay();
+		return day === 0 ? 6 : day - 1;
+	}
+
+	let calendarDays = $derived(() => {
+		const daysInMonth = getDaysInMonth(calendarYear, calendarMonth);
+		const firstDay = getFirstDayOfMonth(calendarYear, calendarMonth);
+		const days: (number | null)[] = [];
+		
+		// Add empty slots for days before the first day of the month
+		for (let i = 0; i < firstDay; i++) {
+			days.push(null);
+		}
+		
+		// Add the days of the month
+		for (let i = 1; i <= daysInMonth; i++) {
+			days.push(i);
+		}
+		
+		return days;
+	});
+
+	let monthNames = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 
+		'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
+
+	function prevMonth() {
+		if (calendarMonth === 0) {
+			calendarMonth = 11;
+			calendarYear--;
+		} else {
+			calendarMonth--;
+		}
+	}
+
+	function nextMonth() {
+		if (calendarMonth === 11) {
+			calendarMonth = 0;
+			calendarYear++;
+		} else {
+			calendarMonth++;
+		}
+	}
+
+	function selectDate(day: number) {
+		const month = String(calendarMonth + 1).padStart(2, '0');
+		const dayStr = String(day).padStart(2, '0');
+		formData.date = `${calendarYear}-${month}-${dayStr}`;
+		showDatePicker = false;
+	}
+
+	function isSelectedDate(day: number): boolean {
+		const [year, month, dayOfMonth] = formData.date.split('-').map(Number);
+		return day === dayOfMonth && calendarMonth === month - 1 && calendarYear === year;
+	}
+
+	function isToday(day: number): boolean {
+		const today = new Date();
+		return day === today.getDate() && 
+			calendarMonth === today.getMonth() && 
+			calendarYear === today.getFullYear();
+	}
+
+	function openDatePicker() {
+		// Initialize calendar to show the currently selected date's month
+		const [year, month] = formData.date.split('-').map(Number);
+		calendarYear = year;
+		calendarMonth = month - 1;
+		showDatePicker = true;
+	}
+
 	// Save transaction
 	async function handleSave() {
 		const amount = parseFloat(formData.amount);
 		if (isNaN(amount) || amount === 0) return;
 
-		const payload = {
-			id: editingTransaction?.id,
+		// Validate required fields
+		if (!formData.account_id || formData.account_id <= 0) {
+			alert('Please select an account');
+			return;
+		}
+
+		const payload: Record<string, any> = {
 			description: formData.description || 'Transaction',
 			amount: formData.isInflow ? Math.abs(amount) : -Math.abs(amount),
 			date: formData.date,
 			account_id: formData.account_id,
-			category_id: formData.category_id,
-			notes: formData.notes
+			cleared: formData.isCleared ? 'cleared' : 'uncleared'
 		};
 
+		// Only include optional fields if they have values
+		if (formData.description) {
+			payload.payee = formData.description;
+		}
+		if (formData.notes) {
+			payload.memo = formData.notes;
+			payload.notes = formData.notes;
+		}
+		if (formData.flag && formData.flag !== 'none') {
+			payload.flag = formData.flag;
+		}
+
+		// Only include category_id if it's a valid positive number
+		if (formData.category_id && formData.category_id > 0) {
+			payload.category_id = formData.category_id;
+		}
+
+		// Include id only when editing
+		if (editingTransaction?.id) {
+			payload.id = editingTransaction.id;
+		}
+
+		console.log('Saving transaction with payload:', payload);
 		await onSave(payload);
 		closeModal();
 	}
@@ -220,11 +368,11 @@
 			</div>
 
 			<!-- Amount Display -->
-			<div class="amount-display">
+			<button type="button" class="amount-display" onclick={() => showCalculator = true}>
 				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
 					{formData.isInflow ? '+' : '−'}{formData.amount}lei
 				</span>
-			</div>
+			</button>
 
 			<!-- Form Fields -->
 			<div class="form-card">
@@ -247,96 +395,60 @@
 				</button>
 
 				<!-- Category -->
-				<div class="form-row">
+				<button type="button" class="form-row" onclick={() => showCategorySelector = true}>
 					<div class="form-icon primary square">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
 						</svg>
 					</div>
 					<div class="form-field">
-						<label for="category-select" class="field-label">Category</label>
-						<select id="category-select" bind:value={formData.category_id} class="field-select">
-							{#each categories as category}
-								<option value={category.id}>{category.name}</option>
-							{/each}
-						</select>
+						<span class="field-label">Category</span>
+						<span class="field-value" class:placeholder={!selectedCategoryName}>
+							{selectedCategoryName || 'Select category'}
+						</span>
 					</div>
 					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
-				</div>
+				</button>
 
 				<!-- Account -->
-				<div class="form-row">
+				<button type="button" class="form-row" onclick={() => showAccountSelector = true}>
 					<div class="form-icon primary square">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
 						</svg>
 					</div>
 					<div class="form-field">
-						<label for="account-select" class="field-label">Account</label>
-						<select id="account-select" bind:value={formData.account_id} class="field-select">
-							{#each accounts as account}
-								<option value={account.id}>{account.name}</option>
-							{/each}
-						</select>
+						<span class="field-label">Account</span>
+						<span class="field-value" class:placeholder={!selectedAccountName}>
+							{selectedAccountName || 'Select account'}
+						</span>
 					</div>
 					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
-				</div>
+				</button>
 
 				<!-- Date -->
-				<div class="form-row no-border">
+				<button type="button" class="form-row no-border" onclick={openDatePicker}>
 					<div class="form-icon primary square">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
 						</svg>
 					</div>
 					<div class="form-field">
-						<label for="date-input" class="field-label">Date</label>
-						<input id="date-input" type="date" bind:value={formData.date} class="field-input" />
+						<span class="field-label">Date</span>
+						<span class="field-value">{formattedDate()}</span>
 					</div>
-				</div>
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" class="calendar-icon">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+					</svg>
+				</button>
 			</div>
 
 			<!-- Additional Options -->
 			<div class="form-card">
-				<!-- Cleared -->
-				<div class="form-row">
-					<div class="form-icon cleared">
-						<span>C</span>
-					</div>
-					<div class="form-field">
-						<span class="field-value">Cleared</span>
-					</div>
-					<button
-						type="button"
-						aria-label="Toggle cleared status"
-						class="toggle-switch"
-						class:active={formData.isCleared}
-						onclick={() => formData.isCleared = !formData.isCleared}
-					>
-						<div class="toggle-thumb" class:active={formData.isCleared}></div>
-					</button>
-				</div>
-
-				<!-- Flag -->
-				<div class="form-row">
-					<div class="form-icon-plain">
-						<svg fill="currentColor" viewBox="0 0 24 24">
-							<path d="M4 24h-2v-24h2v24zm18-21.387s-1.621 1.43-3.754 1.43c-3.36 0-3.436-2.895-7.337-2.895-2.108 0-4.075.98-4.909 1.694v12.085c1.184-.819 2.979-1.681 4.923-1.681 3.684 0 4.201 2.754 7.484 2.754 2.122 0 3.593-1.359 3.593-1.359v-12.028z"/>
-						</svg>
-					</div>
-					<div class="form-field">
-						<span class="field-label">Flag</span>
-						<span class="field-value">None</span>
-					</div>
-					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-					</svg>
-				</div>
-
 				<!-- Memo -->
 				<div class="form-row no-border">
 					<div class="form-icon-plain">
@@ -392,39 +504,88 @@
 		</div>
 
 		<!-- Calculator Keyboard -->
-		<div class="calculator">
-			<div class="calc-grid">
-				<!-- Row 1 -->
-				<button type="button" onclick={() => calcInput('7')} class="calc-btn number">7</button>
-				<button type="button" onclick={() => calcInput('8')} class="calc-btn number">8</button>
-				<button type="button" onclick={() => calcInput('9')} class="calc-btn number">9</button>
-				<button type="button" class="calc-btn operator">×</button>
-				<button type="button" class="calc-btn operator">÷</button>
-				
-				<!-- Row 2 -->
-				<button type="button" onclick={() => calcInput('4')} class="calc-btn number">4</button>
-				<button type="button" onclick={() => calcInput('5')} class="calc-btn number">5</button>
-				<button type="button" onclick={() => calcInput('6')} class="calc-btn number">6</button>
-				<button type="button" class="calc-btn operator">+</button>
-				<button type="button" class="calc-btn operator">−</button>
-				
-				<!-- Row 3 -->
-				<button type="button" onclick={() => calcInput('1')} class="calc-btn number">1</button>
-				<button type="button" onclick={() => calcInput('2')} class="calc-btn number">2</button>
-				<button type="button" onclick={() => calcInput('3')} class="calc-btn number">3</button>
-				<button type="button" onclick={calcDone} class="calc-btn equals">=</button>
-				
-				<!-- Row 4 -->
-				<button type="button" onclick={calcDecimal} class="calc-btn number">.</button>
-				<button type="button" onclick={() => calcInput('0')} class="calc-btn number">0</button>
-				<button type="button" aria-label="Backspace" onclick={calcBackspace} class="calc-btn backspace">
-					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414a2 2 0 011.414-.586H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z" />
-					</svg>
-				</button>
-				<button type="button" onclick={() => { calcDone(); handleSave(); }} class="calc-btn done">Done</button>
+		{#if showCalculator}
+			<div class="calculator-overlay" onclick={() => showCalculator = false} role="presentation"></div>
+			<div class="calculator">
+				<div class="calc-grid">
+					<!-- Row 1 -->
+					<button type="button" onclick={() => calcInput('7')} class="calc-btn number">7</button>
+					<button type="button" onclick={() => calcInput('8')} class="calc-btn number">8</button>
+					<button type="button" onclick={() => calcInput('9')} class="calc-btn number">9</button>
+					<button type="button" class="calc-btn operator">×</button>
+					<button type="button" class="calc-btn operator">÷</button>
+					
+					<!-- Row 2 -->
+					<button type="button" onclick={() => calcInput('4')} class="calc-btn number">4</button>
+					<button type="button" onclick={() => calcInput('5')} class="calc-btn number">5</button>
+					<button type="button" onclick={() => calcInput('6')} class="calc-btn number">6</button>
+					<button type="button" class="calc-btn operator">+</button>
+					<button type="button" class="calc-btn operator">−</button>
+					
+					<!-- Row 3 -->
+					<button type="button" onclick={() => calcInput('1')} class="calc-btn number">1</button>
+					<button type="button" onclick={() => calcInput('2')} class="calc-btn number">2</button>
+					<button type="button" onclick={() => calcInput('3')} class="calc-btn number">3</button>
+					<button type="button" onclick={() => { calcDone(); showCalculator = false; }} class="calc-btn equals">=</button>
+					
+					<!-- Row 4 -->
+					<button type="button" onclick={calcDecimal} class="calc-btn number">.</button>
+					<button type="button" onclick={() => calcInput('0')} class="calc-btn number">0</button>
+					<button type="button" aria-label="Backspace" onclick={calcBackspace} class="calc-btn backspace">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414a2 2 0 011.414-.586H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z" />
+						</svg>
+					</button>
+					<button type="button" onclick={() => { calcDone(); showCalculator = false; }} class="calc-btn done">Done</button>
+				</div>
 			</div>
-		</div>
+		{/if}
+
+		<!-- Date Picker -->
+		{#if showDatePicker}
+			<div class="datepicker-overlay" onclick={() => showDatePicker = false} role="presentation"></div>
+			<div class="datepicker">
+				<div class="datepicker-header">
+					<button type="button" class="datepicker-nav" aria-label="Luna precedentă" onclick={prevMonth}>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+						</svg>
+					</button>
+					<span class="datepicker-title">{monthNames[calendarMonth]} {calendarYear}</span>
+					<button type="button" class="datepicker-nav" aria-label="Luna următoare" onclick={nextMonth}>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+						</svg>
+					</button>
+				</div>
+				<div class="datepicker-weekdays">
+					<span>Lu</span>
+					<span>Ma</span>
+					<span>Mi</span>
+					<span>Jo</span>
+					<span>Vi</span>
+					<span>Sâ</span>
+					<span>Du</span>
+				</div>
+				<div class="datepicker-days">
+					{#each calendarDays() as day}
+						{#if day === null}
+							<span class="day-empty"></span>
+						{:else}
+							<button 
+								type="button" 
+								class="day-btn"
+								class:selected={isSelectedDate(day)}
+								class:today={isToday(day)}
+								onclick={() => selectDate(day)}
+							>
+								{day}
+							</button>
+						{/if}
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -435,11 +596,25 @@
 	onSelect={handlePayeeSelect}
 />
 
+<!-- Category Selector Modal -->
+<CategorySelector 
+	bind:show={showCategorySelector}
+	selectedCategoryId={formData.category_id}
+	onSelect={handleCategorySelect}
+/>
+
+<!-- Account Selector Modal -->
+<AccountSelector 
+	bind:show={showAccountSelector}
+	selectedAccountId={formData.account_id}
+	onSelect={handleAccountSelect}
+/>
+
 <style>
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 50;
+		z-index: 200;
 		background-color: var(--color-bg-primary);
 		display: flex;
 		flex-direction: column;
@@ -532,8 +707,17 @@
 
 	/* Amount Display */
 	.amount-display {
+		display: block;
+		width: 100%;
 		padding: 24px 16px;
 		text-align: center;
+		background: none;
+		border: none;
+		cursor: pointer;
+	}
+
+	.amount-display:active {
+		background-color: var(--color-bg-tertiary);
 	}
 
 	.amount-value {
@@ -604,16 +788,6 @@
 		height: 16px;
 	}
 
-	.form-icon.cleared {
-		width: 32px;
-		height: 32px;
-		border: 2px solid var(--color-text-muted);
-		border-radius: 50%;
-		color: var(--color-text-muted);
-		font-size: 14px;
-		font-weight: 700;
-	}
-
 	.form-icon-plain {
 		width: 32px;
 		height: 32px;
@@ -658,25 +832,6 @@
 		outline: none;
 	}
 
-	.field-select {
-		width: 100%;
-		background: transparent;
-		border: none;
-		color: var(--color-text-primary);
-		font-size: 15px;
-		font-weight: 500;
-		appearance: none;
-		cursor: pointer;
-	}
-
-	.field-select:focus {
-		outline: none;
-	}
-
-	.field-select option {
-		background-color: var(--color-bg-secondary);
-	}
-
 	.field-value {
 		font-size: 15px;
 		font-weight: 500;
@@ -699,36 +854,6 @@
 		height: 20px;
 		color: var(--color-text-muted);
 		flex-shrink: 0;
-	}
-
-	/* Toggle Switch */
-	.toggle-switch {
-		width: 48px;
-		height: 28px;
-		border-radius: 14px;
-		background-color: var(--color-bg-tertiary);
-		border: none;
-		padding: 2px;
-		transition: background-color 0.2s;
-	}
-
-	.toggle-switch.active {
-		background-color: var(--color-primary);
-	}
-
-	.toggle-thumb {
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		background-color: white;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-		transition: transform 0.2s;
-		margin-top: 2px;
-		margin-left: 2px;
-	}
-
-	.toggle-thumb.active {
-		transform: translateX(20px);
 	}
 
 	/* Action Buttons */
@@ -786,10 +911,35 @@
 	}
 
 	/* Calculator */
+	.calculator-overlay {
+		position: fixed;
+		inset: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 210;
+	}
+
 	.calculator {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
 		background-color: var(--color-bg-secondary);
 		border-top: 1px solid var(--color-border);
+		border-top-left-radius: 20px;
+		border-top-right-radius: 20px;
 		padding: 12px 12px 24px;
+		padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+		z-index: 211;
+		animation: slideUp 0.2s ease-out;
+	}
+
+	@keyframes slideUp {
+		from {
+			transform: translateY(100%);
+		}
+		to {
+			transform: translateY(0);
+		}
 	}
 
 	.calc-grid {
@@ -856,5 +1006,126 @@
 
 	.calc-btn.done:active {
 		background-color: var(--color-primary-hover);
+	}
+
+	/* Calendar Icon */
+	.calendar-icon {
+		width: 20px;
+		height: 20px;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+
+	/* Date Picker */
+	.datepicker-overlay {
+		position: fixed;
+		inset: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 210;
+	}
+
+	.datepicker {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background-color: var(--color-bg-secondary);
+		border-top: 1px solid var(--color-border);
+		border-top-left-radius: 20px;
+		border-top-right-radius: 20px;
+		padding: 16px;
+		padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+		z-index: 211;
+		animation: slideUp 0.2s ease-out;
+	}
+
+	.datepicker-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 16px;
+	}
+
+	.datepicker-nav {
+		width: 40px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		color: var(--color-text-primary);
+		border-radius: 12px;
+	}
+
+	.datepicker-nav:active {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.datepicker-nav svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.datepicker-title {
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.datepicker-weekdays {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 4px;
+		margin-bottom: 8px;
+	}
+
+	.datepicker-weekdays span {
+		text-align: center;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-muted);
+		padding: 8px 0;
+	}
+
+	.datepicker-days {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 4px;
+	}
+
+	.day-empty {
+		aspect-ratio: 1;
+	}
+
+	.day-btn {
+		aspect-ratio: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		border-radius: 50%;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		cursor: pointer;
+	}
+
+	.day-btn:active {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.day-btn.today {
+		border: 1px solid var(--color-primary);
+	}
+
+	.day-btn.selected {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.day-btn.selected.today {
+		border-color: var(--color-primary);
 	}
 </style>

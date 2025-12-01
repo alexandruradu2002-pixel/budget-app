@@ -83,7 +83,7 @@ export const POST: RequestHandler = async (event) => {
 		throw error(400, parsed.error.errors[0].message);
 	}
 
-	const { account_id, category_id, amount, description, date, notes, tags } = parsed.data;
+	const { account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags } = parsed.data;
 
 	// Verify account belongs to user
 	const accountCheck = await db.execute({
@@ -94,21 +94,36 @@ export const POST: RequestHandler = async (event) => {
 		throw error(404, 'Account not found');
 	}
 
-	// Verify category belongs to user
-	const categoryCheck = await db.execute({
-		sql: 'SELECT id FROM categories WHERE id = ? AND user_id = ?',
-		args: [category_id, user.userId]
-	});
-	if (categoryCheck.rows.length === 0) {
-		throw error(404, 'Category not found');
+	// Verify category belongs to user (only if category_id is provided)
+	if (category_id) {
+		const categoryCheck = await db.execute({
+			sql: 'SELECT id FROM categories WHERE id = ? AND user_id = ?',
+			args: [category_id, user.userId]
+		});
+		if (categoryCheck.rows.length === 0) {
+			throw error(404, 'Category not found');
+		}
 	}
 
 	const result = await db.execute({
 		sql: `
-			INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, notes, tags)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
-		args: [user.userId, account_id, category_id, amount, description, date, notes || null, tags ? JSON.stringify(tags) : null]
+		args: [
+			user.userId, 
+			account_id, 
+			category_id || null, 
+			amount, 
+			description, 
+			date, 
+			payee || null,
+			memo || null,
+			flag || null,
+			cleared || 'uncleared',
+			notes || null, 
+			tags ? JSON.stringify(tags) : null
+		]
 	});
 
 	// Update account balance
@@ -146,7 +161,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	const oldAmount = oldTx.rows[0].amount as number;
 	const oldAccountId = oldTx.rows[0].account_id as number;
-	const { account_id, category_id, amount, description, date, notes, tags } = parsed.data;
+	const { account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags } = parsed.data;
 
 	// Revert old balance
 	await db.execute({
@@ -158,10 +173,25 @@ export const PUT: RequestHandler = async (event) => {
 	await db.execute({
 		sql: `
 			UPDATE transactions 
-			SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+			SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, 
+				payee = ?, memo = ?, flag = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ? AND user_id = ?
 		`,
-		args: [account_id, category_id, amount, description, date, notes || null, tags ? JSON.stringify(tags) : null, id, user.userId]
+		args: [
+			account_id, 
+			category_id || null, 
+			amount, 
+			description, 
+			date, 
+			payee || null,
+			memo || null,
+			flag || null,
+			cleared || 'uncleared',
+			notes || null, 
+			tags ? JSON.stringify(tags) : null, 
+			id, 
+			user.userId
+		]
 	});
 
 	// Apply new balance

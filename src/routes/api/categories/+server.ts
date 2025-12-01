@@ -30,7 +30,9 @@ export const GET: RequestHandler = async (event) => {
 		color: row.color,
 		icon: row.icon,
 		parent_id: row.parent_id,
+		group_name: row.group_name || null,
 		is_active: row.is_active === 1,
+		is_hidden: row.is_hidden === 1 || false,
 		created_at: row.created_at
 	}));
 

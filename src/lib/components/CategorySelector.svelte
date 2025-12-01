@@ -1,65 +1,69 @@
 <script lang="ts">
+	import type { Category } from '$lib/types';
+
 	// Props
 	let {
 		show = $bindable(false),
-		selectedPayee = $bindable(''),
-		onSelect = (payee: string) => {},
+		selectedCategoryId = $bindable(0),
+		onSelect = (category: Category) => {},
 		onClose = () => {}
 	} = $props();
 
 	// State
 	let searchQuery = $state('');
-	let payees = $state<{ name: string; usage_count: number }[]>([]);
+	let categories = $state<Category[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 
-	// Load payees when modal opens
+	// Group categories by group_name
+	let groupedCategories = $derived(() => {
+		const filtered = searchQuery
+			? categories.filter(c => 
+				c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(c.group_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+			)
+			: categories;
+
+		const groups: Record<string, Category[]> = {};
+		
+		for (const cat of filtered) {
+			const groupName = cat.group_name || 'Other';
+			if (!groups[groupName]) {
+				groups[groupName] = [];
+			}
+			groups[groupName].push(cat);
+		}
+
+		return groups;
+	});
+
+	// Load categories when modal opens
 	$effect(() => {
 		if (show) {
-			loadPayees();
+			loadCategories();
 		}
 	});
 
-	// Search with debounce
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	$effect(() => {
-		if (show) {
-			clearTimeout(searchTimeout);
-			searchTimeout = setTimeout(() => {
-				loadPayees(searchQuery);
-			}, 300);
-		}
-	});
-
-	async function loadPayees(search = '') {
+	async function loadCategories() {
 		loading = true;
 		error = '';
 		try {
-			const url = search 
-				? `/api/payees?search=${encodeURIComponent(search)}`
-				: '/api/payees';
-			const res = await fetch(url);
-			if (!res.ok) throw new Error('Failed to load payees');
+			const res = await fetch('/api/categories');
+			if (!res.ok) throw new Error('Failed to load categories');
 			const data = await res.json();
-			payees = data.payees || [];
+			categories = data.categories || [];
 		} catch (e) {
-			error = 'Could not load payees';
+			error = 'Could not load categories';
 			console.error(e);
 		} finally {
 			loading = false;
 		}
 	}
 
-	function selectPayee(name: string) {
-		selectedPayee = name;
-		onSelect(name);
+	function selectCategory(category: Category) {
+		selectedCategoryId = category.id;
+		onSelect(category);
 		closeModal();
-	}
-
-	function useCustomPayee() {
-		if (searchQuery.trim()) {
-			selectPayee(searchQuery.trim());
-		}
 	}
 
 	function closeModal() {
@@ -86,7 +90,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</button>
-			<h2 class="modal-title">Select Payee</h2>
+			<h2 class="modal-title">Select Category</h2>
 			<div class="header-spacer"></div>
 		</header>
 
@@ -99,7 +103,7 @@
 				<input
 					type="text"
 					bind:value={searchQuery}
-					placeholder="Search or enter new payee..."
+					placeholder="Search categories..."
 					class="search-input"
 				/>
 				{#if searchQuery}
@@ -117,68 +121,55 @@
 			{#if loading}
 				<div class="loading-state">
 					<div class="spinner"></div>
-					<span>Loading payees...</span>
+					<span>Loading categories...</span>
 				</div>
 			{:else if error}
 				<div class="error-state">
 					<p>{error}</p>
-					<button onclick={() => loadPayees(searchQuery)} class="retry-btn">Try Again</button>
+					<button onclick={() => loadCategories()} class="retry-btn">Try Again</button>
+				</div>
+			{:else if Object.keys(groupedCategories()).length === 0}
+				<div class="empty-state">
+					<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+					</svg>
+					<p class="empty-title">No categories found</p>
+					<p class="empty-text">
+						{searchQuery ? 'Try a different search term' : 'Add some categories to get started'}
+					</p>
 				</div>
 			{:else}
-				<!-- Add New Payee option if searching -->
-				{#if searchQuery.trim() && !payees.some(p => p.name.toLowerCase() === searchQuery.trim().toLowerCase())}
-					<button class="payee-item new-payee" onclick={useCustomPayee}>
-						<div class="payee-icon add">
-							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-							</svg>
+				<!-- Categories List grouped by group_name -->
+				<div class="categories-list">
+					{#each Object.entries(groupedCategories()) as [groupName, groupCategories] (groupName)}
+						<div class="category-group">
+							<div class="group-header">
+								<span class="group-name">{groupName}</span>
+							</div>
+							{#each groupCategories as category (category.id)}
+								<button 
+									class="category-item"
+									class:selected={selectedCategoryId === category.id}
+									onclick={() => selectCategory(category)}
+								>
+									<div class="category-icon" style="background-color: {category.color || 'var(--color-bg-tertiary)'}">
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+										</svg>
+									</div>
+									<div class="category-info">
+										<span class="category-name">{category.name}</span>
+									</div>
+									{#if selectedCategoryId === category.id}
+										<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+										</svg>
+									{/if}
+								</button>
+							{/each}
 						</div>
-						<div class="payee-info">
-							<span class="payee-name">Add "{searchQuery.trim()}"</span>
-							<span class="payee-hint">Create new payee</span>
-						</div>
-					</button>
-				{/if}
-
-				<!-- Payees List -->
-				{#if payees.length > 0}
-					<div class="payees-list">
-						{#each payees as payee (payee.name)}
-							<button 
-								class="payee-item"
-								class:selected={selectedPayee === payee.name}
-								onclick={() => selectPayee(payee.name)}
-							>
-								<div class="payee-icon">
-									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-									</svg>
-								</div>
-								<div class="payee-info">
-									<span class="payee-name">{payee.name}</span>
-									<span class="payee-count">{payee.usage_count} transaction{payee.usage_count !== 1 ? 's' : ''}</span>
-								</div>
-								{#if selectedPayee === payee.name}
-									<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-									</svg>
-								{/if}
-							</button>
-						{/each}
-					</div>
-				{:else if !searchQuery}
-					<div class="empty-state">
-						<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-						</svg>
-						<p class="empty-title">No payees yet</p>
-						<p class="empty-text">Start typing to add your first payee</p>
-					</div>
-				{:else}
-					<div class="empty-state">
-						<p class="empty-text">No matching payees found</p>
-					</div>
-				{/if}
+					{/each}
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -188,7 +179,7 @@
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 300;
+		z-index: 210;
 		background-color: var(--color-bg-primary);
 		display: flex;
 		flex-direction: column;
@@ -294,17 +285,38 @@
 		overflow-y: auto;
 	}
 
-	/* Payees List */
-	.payees-list {
+	/* Categories List */
+	.categories-list {
 		display: flex;
 		flex-direction: column;
 	}
 
-	.payee-item {
+	.category-group {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.group-header {
+		padding: 12px 16px 8px;
+		background-color: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+		position: sticky;
+		top: 0;
+	}
+
+	.group-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.category-item {
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		padding: 16px;
+		padding: 14px 16px;
 		background: none;
 		border: none;
 		border-bottom: 1px solid var(--color-border);
@@ -313,58 +325,40 @@
 		cursor: pointer;
 	}
 
-	.payee-item:active {
+	.category-item:active {
 		background-color: var(--color-bg-secondary);
 	}
 
-	.payee-item.selected {
+	.category-item.selected {
 		background-color: var(--color-bg-secondary);
 	}
 
-	.payee-item.new-payee {
-		background-color: var(--color-bg-secondary);
-	}
-
-	.payee-icon {
-		width: 40px;
-		height: 40px;
+	.category-icon {
+		width: 36px;
+		height: 36px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background-color: var(--color-bg-tertiary);
-		border-radius: 50%;
-		color: var(--color-text-muted);
+		border-radius: 8px;
+		color: white;
 		flex-shrink: 0;
 	}
 
-	.payee-icon.add {
-		background-color: var(--color-primary);
-		color: white;
+	.category-icon svg {
+		width: 18px;
+		height: 18px;
 	}
 
-	.payee-icon svg {
-		width: 20px;
-		height: 20px;
-	}
-
-	.payee-info {
+	.category-info {
 		flex: 1;
 		min-width: 0;
 	}
 
-	.payee-name {
+	.category-name {
 		display: block;
 		font-size: 16px;
 		font-weight: 500;
 		color: var(--color-text-primary);
-	}
-
-	.payee-count,
-	.payee-hint {
-		display: block;
-		font-size: 13px;
-		color: var(--color-text-muted);
-		margin-top: 2px;
 	}
 
 	.check-icon {
