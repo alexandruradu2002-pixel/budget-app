@@ -1,13 +1,12 @@
 <script lang="ts">
-	import type { Category } from '$lib/types';
+	import type { Category, Transaction, Account } from '$lib/types';
+	import type { CurrencyValue } from '$lib/constants';
 	import { formatCurrency } from '$lib/utils/format';
+	import { currencyStore } from '$lib/stores';
 
-	// Extended category type with balance from API
-	interface CategoryWithBalance extends Category {
-		balance?: number;
-		available?: number;
-		budgeted?: number;
-		activity?: number;
+	// Extended category type with spent amount
+	interface CategoryWithSpent extends Category {
+		spent?: number;
 	}
 
 	// Props
@@ -20,9 +19,28 @@
 
 	// State
 	let searchQuery = $state('');
-	let categories = $state<CategoryWithBalance[]>([]);
+	let categories = $state<CategoryWithSpent[]>([]);
+	let transactions = $state<Transaction[]>([]);
+	let accountCurrencies = $state<Map<number, CurrencyValue>>(new Map());
 	let loading = $state(false);
 	let error = $state('');
+
+	// Calculate spent amount per category from transactions
+	let spentByCategory = $derived.by(() => {
+		const spent = new Map<number, number>();
+		for (const t of transactions) {
+			if (t.category_id) {
+				// Get the currency of the transaction's account
+				const accountCurrency = accountCurrencies.get(t.account_id) || 'RON';
+				// Convert to main currency
+				const convertedAmount = currencyStore.convert(t.amount, accountCurrency);
+				
+				const current = spent.get(t.category_id) || 0;
+				spent.set(t.category_id, current + convertedAmount);
+			}
+		}
+		return spent;
+	});
 
 	// Get the selected category
 	let selectedCategory = $derived(() => {
@@ -38,17 +56,21 @@
 			)
 			: categories;
 
-		const groups: Record<string, CategoryWithBalance[]> = {};
+		const groups: Record<string, CategoryWithSpent[]> = {};
 		
 		for (const cat of filtered) {
 			// Skip selected category in the main list
 			if (cat.id === selectedCategoryId) continue;
 			
-			const groupName = cat.group_name || 'Other';
+			const groupName = cat.group_name || 'Uncategorized';
 			if (!groups[groupName]) {
 				groups[groupName] = [];
 			}
-			groups[groupName].push(cat);
+			// Add spent amount to the category
+			groups[groupName].push({
+				...cat,
+				spent: spentByCategory.get(cat.id) || 0
+			});
 		}
 
 		return groups;
@@ -65,10 +87,40 @@
 		loading = true;
 		error = '';
 		try {
-			const res = await fetch('/api/categories');
-			if (!res.ok) throw new Error('Failed to load categories');
-			const data = await res.json();
-			categories = data.categories || [];
+			// Get current month's start and end dates
+			const now = new Date();
+			const year = now.getFullYear();
+			const month = now.getMonth();
+			const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+			const lastDay = new Date(year, month + 1, 0).getDate();
+			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+			// Fetch categories, transactions, and accounts in parallel
+			const [catRes, transRes, accountsRes] = await Promise.all([
+				fetch('/api/categories'),
+				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
+				fetch('/api/accounts')
+			]);
+
+			if (!catRes.ok) throw new Error('Failed to load categories');
+			
+			const catData = await catRes.json();
+			categories = catData.categories || [];
+			
+			if (transRes.ok) {
+				const transData = await transRes.json();
+				transactions = transData.transactions || [];
+			}
+			
+			// Build account currency map
+			if (accountsRes.ok) {
+				const accountsData = await accountsRes.json();
+				const currencyMap = new Map<number, CurrencyValue>();
+				for (const acc of accountsData.accounts || []) {
+					currencyMap.set(acc.id, (acc.currency as CurrencyValue) || 'RON');
+				}
+				accountCurrencies = currencyMap;
+			}
 		} catch (e) {
 			error = 'Could not load categories';
 			console.error(e);
@@ -195,7 +247,7 @@
 											{/if}
 										</div>
 										<span class="category-name">{category.name}</span>
-										<span class="category-balance">{formatCurrency(category.balance || 0)}</span>
+										<span class="category-spent" class:positive={(category.spent || 0) > 0} class:negative={(category.spent || 0) < 0}>{formatCurrency(category.spent || 0)}</span>
 									</button>
 								{/each}
 							</div>
@@ -386,10 +438,18 @@
 		color: var(--color-text-muted);
 	}
 
-	.category-balance {
+	.category-spent {
 		font-size: 15px;
 		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.category-spent.positive {
 		color: var(--color-success);
+	}
+
+	.category-spent.negative {
+		color: var(--color-danger);
 	}
 
 	/* States */

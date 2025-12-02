@@ -62,6 +62,8 @@
 	let showClosedAccounts = $state(false);
 	let showAccountModal = $state(false);
 	let isReorderMode = $state(false);
+	let isEditMode = $state(false);
+	let editingAccount = $state<Account | null>(null);
 
 	// Helper function to calculate currency totals for a list of accounts
 	function calculateCurrencyTotals(accountList: Account[]): CurrencyTotal[] {
@@ -217,12 +219,24 @@
 	async function moveAccount(groupIndex: number, accountIndex: number, direction: 'up' | 'down') {
 		// Get current group accounts directly
 		const group = accountGroups[groupIndex];
-		if (!group) return;
+		if (!group) {
+			console.error('Group not found:', groupIndex);
+			return;
+		}
 		
 		const groupAccounts = [...group.accounts];
 		const newIndex = direction === 'up' ? accountIndex - 1 : accountIndex + 1;
 		
-		if (newIndex < 0 || newIndex >= groupAccounts.length) return;
+		if (newIndex < 0 || newIndex >= groupAccounts.length) {
+			console.log('Invalid move:', { accountIndex, newIndex, direction, length: groupAccounts.length });
+			return;
+		}
+		
+		console.log('Moving account:', { 
+			from: accountIndex, 
+			to: newIndex, 
+			account: groupAccounts[accountIndex].name 
+		});
 		
 		// Swap the accounts
 		const temp = groupAccounts[accountIndex];
@@ -235,6 +249,8 @@
 			sort_order: index
 		}));
 		
+		console.log('Saving order:', accountsToUpdate);
+		
 		// Save to database
 		try {
 			const response = await fetch('/api/accounts', {
@@ -243,9 +259,13 @@
 				body: JSON.stringify({ accounts: accountsToUpdate })
 			});
 			
+			console.log('Response:', response.status);
+			
 			if (response.ok) {
 				// Reload accounts to reflect the new order
 				await loadAccounts();
+			} else {
+				console.error('Failed to save:', await response.text());
 			}
 		} catch (error) {
 			console.error('Failed to save account order:', error);
@@ -255,7 +275,18 @@
 
 <div class="accounts-page">
 	<PageHeader title="Accounts">
-		<HeaderButton label={isReorderMode ? "Done" : "Reorder"} onclick={() => isReorderMode = !isReorderMode}>
+		<HeaderButton label={isEditMode ? "Done" : "Edit"} onclick={() => { isEditMode = !isEditMode; if (isEditMode) isReorderMode = false; }}>
+			{#if isEditMode}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+				</svg>
+			{:else}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+				</svg>
+			{/if}
+		</HeaderButton>
+		<HeaderButton label={isReorderMode ? "Done" : "Reorder"} onclick={() => { isReorderMode = !isReorderMode; if (isReorderMode) isEditMode = false; }}>
 			{#if isReorderMode}
 				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -337,6 +368,24 @@
 									</button>
 								</div>
 							</div>
+						{:else if isEditMode}
+							<div class="account-row edit-row" class:has-border={index > 0}>
+								<div class="account-info">
+									<span class="account-name">{account.name}</span>
+									{#if account.currency && account.currency !== 'RON'}
+										<span class="account-currency">{account.currency}</span>
+									{/if}
+								</div>
+								<button 
+									class="edit-button"
+									onclick={() => { editingAccount = account; showAccountModal = true; }}
+									aria-label="Edit account"
+								>
+									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+									</svg>
+								</button>
+							</div>
 						{:else}
 							<a href="/accounts/{account.id}" class="account-row" class:has-border={index > 0}>
 								<div class="account-info">
@@ -394,7 +443,7 @@
 
 		<!-- Bottom Actions -->
 		<div class="bottom-actions">
-			<button class="action-button primary" onclick={() => showAccountModal = true}>
+			<button class="action-button primary" onclick={() => { editingAccount = null; showAccountModal = true; }}>
 				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 					<circle cx="12" cy="12" r="9"/>
 					<line x1="12" y1="8" x2="12" y2="16"/>
@@ -409,7 +458,9 @@
 <!-- Account Modal -->
 <AccountModal 
 	bind:show={showAccountModal}
+	account={editingAccount}
 	onSave={loadAccounts}
+	onClose={() => { editingAccount = null; }}
 />
 
 <style>
@@ -548,6 +599,33 @@
 
 	.reorder-row {
 		cursor: default;
+	}
+
+	/* Edit Mode */
+	.edit-row {
+		cursor: default;
+	}
+
+	.edit-button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		border-radius: 8px;
+		color: var(--color-primary);
+		cursor: pointer;
+	}
+
+	.edit-button:active {
+		background-color: var(--color-border);
+	}
+
+	.edit-button svg {
+		width: 18px;
+		height: 18px;
 	}
 
 	/* Accounts Group */

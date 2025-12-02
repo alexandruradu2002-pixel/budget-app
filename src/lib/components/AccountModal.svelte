@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { toast } from '$lib/stores';
+	import type { Account } from '$lib/types';
 
 	// Props
 	let {
 		show = $bindable(false),
+		account = null as Account | null,
 		onSave = async () => {},
 		onClose = () => {}
 	} = $props();
+
+	// Determine if we're editing
+	let isEditing = $derived(account !== null);
 
 	// Account types for selection (only 3 as requested)
 	const accountTypes = [
@@ -65,13 +70,25 @@
 	// Reset form when modal opens
 	$effect(() => {
 		if (show) {
-			formData = {
-				name: '',
-				type: 'cash',
-				balance: '',
-				currency: 'RON',
-				notes: ''
-			};
+			if (account) {
+				// Editing existing account
+				formData = {
+					name: account.name,
+					type: (account.type === 'checking' ? 'cash' : account.type) as 'cash' | 'investment' | 'savings',
+					balance: account.balance.toString(),
+					currency: account.currency || 'RON',
+					notes: ''
+				};
+			} else {
+				// Creating new account
+				formData = {
+					name: '',
+					type: 'cash',
+					balance: '',
+					currency: 'RON',
+					notes: ''
+				};
+			}
 			saving = false;
 			showTypeSelector = false;
 			showCurrencySelector = false;
@@ -90,28 +107,53 @@
 		try {
 			const balanceNum = parseFloat(formData.balance) || 0;
 			
-			const response = await fetch('/api/accounts', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: formData.name.trim(),
-					type: formData.type,
-					balance: balanceNum,
-					currency: formData.currency,
-					notes: formData.notes.trim() || null
-				})
-			});
+			if (isEditing && account) {
+				// Update existing account
+				const response = await fetch('/api/accounts', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						id: account.id,
+						name: formData.name.trim(),
+						type: formData.type,
+						balance: balanceNum,
+						currency: formData.currency,
+						notes: formData.notes.trim() || null
+					})
+				});
 
-			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.message || 'Nu s-a putut crea contul');
+				if (!response.ok) {
+					const data = await response.json();
+					throw new Error(data.message || 'Nu s-a putut actualiza contul');
+				}
+
+				toast.success('Contul a fost actualizat');
+			} else {
+				// Create new account
+				const response = await fetch('/api/accounts', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						name: formData.name.trim(),
+						type: formData.type,
+						balance: balanceNum,
+						currency: formData.currency,
+						notes: formData.notes.trim() || null
+					})
+				});
+
+				if (!response.ok) {
+					const data = await response.json();
+					throw new Error(data.message || 'Nu s-a putut crea contul');
+				}
+
+				toast.success('Contul a fost creat');
 			}
-
-			toast.success('Contul a fost creat');
+			
 			await onSave();
 			closeModal();
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Eroare la crearea contului');
+			toast.error(error instanceof Error ? error.message : 'Eroare la salvarea contului');
 		} finally {
 			saving = false;
 		}
@@ -145,7 +187,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 				</svg>
 			</button>
-			<h2 class="modal-title">Add Account</h2>
+			<h2 class="modal-title">{isEditing ? 'Edit Account' : 'Add Account'}</h2>
 			<div class="header-spacer"></div>
 		</header>
 

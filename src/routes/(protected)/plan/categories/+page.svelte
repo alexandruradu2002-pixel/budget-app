@@ -5,6 +5,7 @@
 
 	// Constants
 	const UNCATEGORIZED = 'Uncategorized';
+	const HIDDEN_GROUP = 'Hidden';
 
 	interface CategoryGroup {
 		name: string;
@@ -37,9 +38,14 @@
 	let showDeleteConfirm = $state(false);
 	let categoryToDelete = $state<Category | null>(null);
 
+	// Delete group confirmation modal state
+	let showDeleteGroupConfirm = $state(false);
+	let groupToDelete = $state<string | null>(null);
+
 	// Form state
 	let formName = $state('');
 	let formGroupName = $state('');
+	let formIsHidden = $state(false);
 
 	// Derived: all available groups for dropdown (from DB + any group_names from categories)
 	let availableGroups = $derived.by(() => {
@@ -72,7 +78,11 @@
 		editingCategory = options?.category ?? null;
 		editingGroupName = options?.groupName ?? null;
 		formName = options?.category?.name ?? options?.groupName ?? '';
-		formGroupName = options?.category?.group_name ?? options?.preselectedGroup ?? '';
+		// Check if category is in Hidden group
+		const categoryGroup = options?.category?.group_name ?? '';
+		formIsHidden = categoryGroup === HIDDEN_GROUP;
+		// If hidden, show original group as empty (Uncategorized), otherwise show actual group
+		formGroupName = formIsHidden ? '' : (categoryGroup || (options?.preselectedGroup ?? ''));
 		isAddingToGroup = !!options?.preselectedGroup && !options?.category;
 		showModal = true;
 	}
@@ -140,10 +150,14 @@
 				.map(([name, cats]) => ({
 					name,
 					categories: cats,
-					isExpanded: true
+					// Hidden group is collapsed by default, others expanded
+					isExpanded: name !== HIDDEN_GROUP
 				}))
 				.sort((a, b) => {
-					// Uncategorized always at the end
+					// Hidden always at the very end
+					if (a.name === HIDDEN_GROUP) return 1;
+					if (b.name === HIDDEN_GROUP) return -1;
+					// Uncategorized after all named groups but before Hidden
 					if (a.name === UNCATEGORIZED) return 1;
 					if (b.name === UNCATEGORIZED) return -1;
 					// Sort alphabetically
@@ -245,10 +259,13 @@
 	}
 
 	async function saveCategory(name: string) {
+		// If hidden is checked, use Hidden group, otherwise use selected group
+		const groupName = formIsHidden ? HIDDEN_GROUP : (formGroupName.trim() || null);
+		
 		const payload = {
 			name,
 			type: editingCategory?.type ?? 'expense',
-			group_name: formGroupName.trim() || null
+			group_name: groupName
 		};
 
 		const res = await fetch('/api/categories', {
@@ -286,6 +303,36 @@
 	function cancelDelete() {
 		showDeleteConfirm = false;
 		categoryToDelete = null;
+	}
+
+	// Delete group
+	function openDeleteGroupConfirm(groupName: string) {
+		groupToDelete = groupName;
+		showDeleteGroupConfirm = true;
+	}
+
+	async function confirmDeleteGroup() {
+		if (!groupToDelete) return;
+		
+		try {
+			const res = await fetch(`/api/category-groups?name=${encodeURIComponent(groupToDelete)}`, { method: 'DELETE' });
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.message || 'Failed to delete group');
+			}
+			toast.success('Group deleted');
+			showDeleteGroupConfirm = false;
+			groupToDelete = null;
+			await loadCategories();
+		} catch (e) {
+			console.error('Failed to delete group:', e);
+			toast.error(e instanceof Error ? e.message : 'Failed to delete group');
+		}
+	}
+
+	function cancelDeleteGroup() {
+		showDeleteGroupConfirm = false;
+		groupToDelete = null;
 	}
 
 	// Reorder API calls
@@ -381,7 +428,9 @@
 
 			<!-- Category Groups -->
 			<div class="groups-list">
-				{#each categoryGroups as group, groupIndex (group.name)}
+				{#each categoryGroups.filter(g => 
+					(g.name !== UNCATEGORIZED && g.name !== HIDDEN_GROUP) || g.categories.length > 0
+				) as group, groupIndex (group.name)}
 					<div 
 						class="group-container"
 						role="listitem"
@@ -435,6 +484,13 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
 									</svg>
 								</button>
+								{#if group.name !== UNCATEGORIZED && group.name !== HIDDEN_GROUP}
+									<button class="icon-btn danger" onclick={(e) => { e.stopPropagation(); openDeleteGroupConfirm(group.name); }} aria-label="Delete group">
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+										</svg>
+									</button>
+								{/if}
 							</div>
 						</div>
 
@@ -518,18 +574,35 @@
 
 				{#if modalMode === 'category'}
 					<!-- Group dropdown - show always for categories (both edit and add) -->
-					{#if !isAddingToGroup}
+					{#if !isAddingToGroup && !formIsHidden}
 						<div class="form-group">
 							<label for="group">Group</label>
 							<select id="group" bind:value={formGroupName}>
 								<option value="">{UNCATEGORIZED}</option>
 								{#each availableGroups as groupName (groupName)}
-									{#if groupName !== UNCATEGORIZED}
+									{#if groupName !== UNCATEGORIZED && groupName !== HIDDEN_GROUP}
 										<option value={groupName}>{groupName}</option>
 									{/if}
 								{/each}
 							</select>
 						</div>
+					{/if}
+
+					<!-- Hide category checkbox - only show when editing -->
+					{#if editingCategory}
+						<label class="checkbox-group">
+							<input type="checkbox" bind:checked={formIsHidden} />
+							<svg class="checkbox-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								{#if formIsHidden}
+									<path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+								{/if}
+								<rect x="3" y="3" width="18" height="18" rx="4" stroke-linecap="round" stroke-linejoin="round" />
+							</svg>
+							<span>Hide Category</span>
+						</label>
+						{#if formIsHidden}
+							<p class="hide-hint">Category will be moved to the Hidden group at the bottom of the list.</p>
+						{/if}
 					{/if}
 				{/if}
 			</div>
@@ -560,6 +633,28 @@
 			<div class="confirm-actions">
 				<button class="btn-secondary" onclick={cancelDelete}>Cancel</button>
 				<button class="btn-danger" onclick={confirmDeleteCategory}>Delete</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete Group Confirmation Modal -->
+{#if showDeleteGroupConfirm && groupToDelete}
+	<div class="modal-overlay" onclick={cancelDeleteGroup} onkeydown={(e) => e.key === 'Escape' && cancelDeleteGroup()} role="presentation">
+		<div class="modal confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="confirm-group-title" tabindex="-1">
+			<div class="confirm-content">
+				<div class="confirm-icon">
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="32" height="32">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+				</div>
+				<h3 id="confirm-group-title">Delete Group</h3>
+				<p>Are you sure you want to delete <strong>"{groupToDelete}"</strong>?</p>
+				<p class="confirm-note">Categories in this group will be moved to Uncategorized.</p>
+			</div>
+			<div class="confirm-actions">
+				<button class="btn-secondary" onclick={cancelDeleteGroup}>Cancel</button>
+				<button class="btn-danger" onclick={confirmDeleteGroup}>Delete</button>
 			</div>
 		</div>
 	</div>
@@ -622,22 +717,22 @@
 	.group-header {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 12px 16px;
+		gap: 6px;
+		padding: 8px 12px;
 		background-color: var(--color-bg-secondary);
 	}
 
 	.group-expand {
 		background: none;
 		border: none;
-		padding: 4px;
+		padding: 2px;
 		cursor: pointer;
 		color: var(--color-text-muted);
 	}
 
 	.chevron {
-		width: 20px;
-		height: 20px;
+		width: 16px;
+		height: 16px;
 		transition: transform 0.2s;
 	}
 
@@ -646,15 +741,16 @@
 	}
 
 	.group-name {
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 		flex: 1;
 	}
 
 	.group-count {
-		font-size: 13px;
+		font-size: 12px;
 		color: var(--color-text-muted);
-		margin-right: 8px;
+		margin-right: 6px;
 	}
 
 	.group-actions {
@@ -819,6 +915,48 @@
 		border-color: var(--color-primary);
 	}
 
+	/* Checkbox group */
+	.checkbox-group {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+		padding: 8px 0;
+	}
+
+	.checkbox-group input[type="checkbox"] {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.checkbox-icon {
+		width: 24px;
+		height: 24px;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+
+	.checkbox-group input[type="checkbox"]:checked + .checkbox-icon {
+		color: var(--color-primary);
+	}
+
+	.checkbox-group span {
+		font-size: 15px;
+		color: var(--color-text-primary);
+	}
+
+	.hide-hint {
+		margin: 0;
+		padding: 8px 12px;
+		font-size: 13px;
+		color: var(--color-text-muted);
+		background-color: var(--color-bg-primary);
+		border-radius: 8px;
+		line-height: 1.4;
+	}
+
 	.modal-footer {
 		display: flex;
 		gap: 12px;
@@ -907,6 +1045,12 @@
 
 	.confirm-content strong {
 		color: var(--color-text-primary);
+	}
+
+	.confirm-note {
+		margin-top: 8px;
+		font-size: 13px;
+		color: var(--color-text-muted);
 	}
 
 	.confirm-actions {

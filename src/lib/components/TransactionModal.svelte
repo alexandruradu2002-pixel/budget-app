@@ -58,9 +58,7 @@
 
 	// Calculator state
 	let calcDisplay = $state('0');
-	let calcHasDecimal = $state(false);
 	let isNewInput = $state(true);
-	let showCalculator = $state(false);
 
 	// Payee selector state
 	let showPayeeSelector = $state(false);
@@ -146,10 +144,10 @@
 			currentPosition = null;
 
 			if (editingTransaction) {
-				const amount = Math.abs(editingTransaction.amount);
+				const amount = Math.abs(Math.round(editingTransaction.amount));
 				formData = {
 					description: editingTransaction.description,
-					amount: amount.toFixed(2),
+					amount: amount.toString(),
 					date: editingTransaction.date,
 					account_id: editingTransaction.account_id,
 					category_id: editingTransaction.category_id,
@@ -158,8 +156,7 @@
 					isCleared: false,
 					flag: 'none'
 				};
-				calcDisplay = amount.toFixed(2);
-				calcHasDecimal = calcDisplay.includes('.');
+				calcDisplay = amount.toString();
 				isNewInput = false;
 				// Set display names for editing
 				const cat = categories.find(c => c.id === editingTransaction.category_id);
@@ -173,7 +170,7 @@
 				
 				formData = {
 					description: '',
-					amount: '0.00',
+					amount: '0',
 					date: new Date().toISOString().split('T')[0],
 					account_id: initialAccountId,
 					category_id: categories[0]?.id || 0,
@@ -183,7 +180,6 @@
 					flag: 'none'
 				};
 				calcDisplay = '0';
-				calcHasDecimal = false;
 				isNewInput = true;
 				// Set default display names
 				selectedCategoryName = categories[0]?.name || '';
@@ -201,37 +197,18 @@
 			calcDisplay = digit;
 			isNewInput = false;
 		} else {
-			// Limit decimal places to 2
-			if (calcHasDecimal) {
-				const parts = calcDisplay.split('.');
-				if (parts[1] && parts[1].length >= 2) return;
-			}
+			// Limit to reasonable amount (max 999,999,999)
+			if (calcDisplay.length >= 9) return;
 			calcDisplay += digit;
-		}
-		updateAmountFromCalc();
-	}
-
-	function calcDecimal() {
-		if (!calcHasDecimal) {
-			if (isNewInput) {
-				calcDisplay = '0.';
-				isNewInput = false;
-			} else {
-				calcDisplay += '.';
-			}
-			calcHasDecimal = true;
 		}
 		updateAmountFromCalc();
 	}
 
 	function calcBackspace() {
 		if (calcDisplay.length > 1) {
-			const removed = calcDisplay[calcDisplay.length - 1];
-			if (removed === '.') calcHasDecimal = false;
 			calcDisplay = calcDisplay.slice(0, -1);
 		} else {
 			calcDisplay = '0';
-			calcHasDecimal = false;
 			isNewInput = true;
 		}
 		updateAmountFromCalc();
@@ -239,19 +216,13 @@
 
 	function calcClear() {
 		calcDisplay = '0';
-		calcHasDecimal = false;
 		isNewInput = true;
 		updateAmountFromCalc();
 	}
 
 	function updateAmountFromCalc() {
-		const num = parseFloat(calcDisplay) || 0;
-		formData.amount = num.toFixed(2);
-	}
-
-	function calcDone() {
-		const num = parseFloat(calcDisplay) || 0;
-		formData.amount = num.toFixed(2);
+		const num = parseInt(calcDisplay) || 0;
+		formData.amount = num.toString();
 	}
 
 	// Get current account's currency symbol
@@ -261,12 +232,13 @@
 		return currencySymbols[currency] || currency;
 	});
 
-	// Formatted display amount with sign and account currency
+	// Formatted display amount with sign and account currency (with thousand separators)
 	let displayAmount = $derived(() => {
-		const num = parseFloat(formData.amount) || 0;
+		const num = parseInt(formData.amount) || 0;
 		const sign = formData.isInflow ? '+' : '−';
 		const symbol = selectedAccountCurrency();
-		const formatted = num.toFixed(2);
+		// Format with thousand separators (using dot as separator)
+		const formatted = num.toLocaleString('ro-RO');
 		
 		// Position symbol based on currency type
 		if (['€', '$', '£', '¥'].includes(symbol)) {
@@ -519,11 +491,11 @@
 			</div>
 
 			<!-- Amount Display -->
-			<button type="button" class="amount-display" onclick={() => showCalculator = true}>
+			<div class="amount-display">
 				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
 					{displayAmount()}
 				</span>
-			</button>
+			</div>
 
 			<!-- Form Fields -->
 			<div class="form-card">
@@ -634,7 +606,10 @@
 					</svg>
 				</div>
 			</div>
+		</div>
 
+		<!-- Bottom fixed section: Action Buttons + Calculator -->
+		<div class="bottom-section">
 			<!-- Action Buttons -->
 			<div class="action-buttons">
 				{#if editingTransaction}
@@ -652,45 +627,35 @@
 					Save
 				</button>
 			</div>
-		</div>
 
-		<!-- Calculator Keyboard -->
-		{#if showCalculator}
-			<div class="calculator-overlay" onclick={() => showCalculator = false} role="presentation"></div>
+			<!-- Calculator Keyboard (always visible) -->
 			<div class="calculator">
 				<div class="calc-grid">
 					<!-- Row 1 -->
 					<button type="button" onclick={() => calcInput('7')} class="calc-btn number">7</button>
 					<button type="button" onclick={() => calcInput('8')} class="calc-btn number">8</button>
 					<button type="button" onclick={() => calcInput('9')} class="calc-btn number">9</button>
-					<button type="button" class="calc-btn operator">×</button>
-					<button type="button" class="calc-btn operator">÷</button>
 					
 					<!-- Row 2 -->
 					<button type="button" onclick={() => calcInput('4')} class="calc-btn number">4</button>
 					<button type="button" onclick={() => calcInput('5')} class="calc-btn number">5</button>
 					<button type="button" onclick={() => calcInput('6')} class="calc-btn number">6</button>
-					<button type="button" class="calc-btn operator">+</button>
-					<button type="button" class="calc-btn operator">−</button>
 					
 					<!-- Row 3 -->
 					<button type="button" onclick={() => calcInput('1')} class="calc-btn number">1</button>
 					<button type="button" onclick={() => calcInput('2')} class="calc-btn number">2</button>
 					<button type="button" onclick={() => calcInput('3')} class="calc-btn number">3</button>
-					<button type="button" onclick={() => { calcDone(); showCalculator = false; }} class="calc-btn equals">=</button>
 					
 					<!-- Row 4 -->
-					<button type="button" onclick={calcDecimal} class="calc-btn number">.</button>
-					<button type="button" onclick={() => calcInput('0')} class="calc-btn number">0</button>
+					<button type="button" onclick={() => calcInput('0')} class="calc-btn number span-2">0</button>
 					<button type="button" aria-label="Backspace" onclick={calcBackspace} class="calc-btn backspace">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414a2 2 0 011.414-.586H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z" />
 						</svg>
 					</button>
-					<button type="button" onclick={() => { calcDone(); showCalculator = false; }} class="calc-btn done">Done</button>
 				</div>
 			</div>
-		{/if}
+		</div>
 
 		<!-- Date Picker -->
 		{#if showDatePicker}
@@ -799,7 +764,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 12px 16px;
+		padding: 8px 12px;
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -807,13 +772,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 44px;
-		height: 44px;
-		margin-left: -8px;
+		width: 36px;
+		height: 36px;
+		margin-left: -4px;
 		background: none;
 		border: none;
 		color: var(--color-text-primary);
-		border-radius: 12px;
+		border-radius: 10px;
 	}
 
 	.close-btn:active {
@@ -821,25 +786,24 @@
 	}
 
 	.close-btn svg {
-		width: 24px;
-		height: 24px;
+		width: 20px;
+		height: 20px;
 	}
 
 	.modal-title {
-		font-size: 18px;
+		font-size: 16px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
 
 	.header-spacer {
-		width: 44px;
+		width: 36px;
 	}
 
 	/* Content */
 	.modal-content {
 		flex: 1;
-		overflow-y: auto;
-		padding-bottom: 16px;
+		overflow-y: hidden;
 	}
 
 	/* Toggle */
@@ -883,15 +847,8 @@
 	.amount-display {
 		display: block;
 		width: 100%;
-		padding: 24px 16px;
+		padding: 20px 16px;
 		text-align: center;
-		background: none;
-		border: none;
-		cursor: pointer;
-	}
-
-	.amount-display:active {
-		background-color: var(--color-bg-tertiary);
 	}
 
 	.amount-value {
@@ -1030,12 +987,18 @@
 		flex-shrink: 0;
 	}
 
+	/* Bottom Section (sticky) */
+	.bottom-section {
+		flex-shrink: 0;
+		background-color: var(--color-bg-primary);
+	}
+
 	/* Action Buttons */
 	.action-buttons {
 		display: flex;
 		justify-content: flex-end;
 		gap: 12px;
-		padding: 16px;
+		padding: 12px 16px;
 	}
 
 	.btn-delete {
@@ -1085,52 +1048,31 @@
 	}
 
 	/* Calculator */
-	.calculator-overlay {
-		position: fixed;
-		inset: 0;
-		background-color: rgba(0, 0, 0, 0.5);
-		z-index: 210;
-	}
-
 	.calculator {
-		position: fixed;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		background-color: var(--color-bg-secondary);
-		border-top: 1px solid var(--color-border);
-		border-top-left-radius: 20px;
-		border-top-right-radius: 20px;
-		padding: 12px 12px 24px;
-		padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
-		z-index: 211;
-		animation: slideUp 0.2s ease-out;
-	}
-
-	@keyframes slideUp {
-		from {
-			transform: translateY(100%);
-		}
-		to {
-			transform: translateY(0);
-		}
+		background: transparent;
+		padding: 4px 12px;
+		padding-bottom: calc(12px + env(safe-area-inset-bottom, 0));
 	}
 
 	.calc-grid {
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
-		gap: 8px;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 6px;
 	}
 
 	.calc-btn {
-		height: 48px;
+		height: 44px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		border: none;
-		border-radius: 12px;
-		font-size: 20px;
+		border-radius: 10px;
+		font-size: 18px;
 		font-weight: 500;
+	}
+
+	.calc-btn.span-2 {
+		grid-column: span 2;
 	}
 
 	.calc-btn.number {
@@ -1140,20 +1082,6 @@
 
 	.calc-btn.number:active {
 		background-color: var(--color-border);
-	}
-
-	.calc-btn.operator {
-		background-color: var(--color-bg-primary);
-		color: var(--color-text-muted);
-	}
-
-	.calc-btn.equals {
-		grid-column: span 2;
-		grid-row: span 2;
-		background-color: var(--color-bg-primary);
-		border: 1px solid var(--color-border);
-		color: var(--color-text-muted);
-		font-size: 18px;
 	}
 
 	.calc-btn.backspace {
@@ -1166,20 +1094,8 @@
 	}
 
 	.calc-btn.backspace svg {
-		width: 20px;
-		height: 20px;
-	}
-
-	.calc-btn.done {
-		grid-column: span 2;
-		background-color: var(--color-primary);
-		color: white;
-		font-size: 14px;
-		font-weight: 600;
-	}
-
-	.calc-btn.done:active {
-		background-color: var(--color-primary-hover);
+		width: 18px;
+		height: 18px;
 	}
 
 	/* Calendar Icon */

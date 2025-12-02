@@ -6,6 +6,10 @@
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 	import { currencyStore } from '$lib/stores';
 
+	// Constants
+	const UNCATEGORIZED = 'Uncategorized';
+	const HIDDEN_GROUP = 'Hidden';
+
 	// Initialize currency store from localStorage
 	$effect(() => {
 		currencyStore.init();
@@ -99,11 +103,12 @@
 			const lastDay = new Date(year, month + 1, 0).getDate();
 			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-			// Fetch categories, transactions, and accounts in parallel
-			const [catRes, transRes, accountsRes] = await Promise.all([
+			// Fetch categories, transactions, accounts, and groups in parallel
+			const [catRes, transRes, accountsRes, groupsRes] = await Promise.all([
 				fetch('/api/categories'),
 				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
-				fetch('/api/accounts')
+				fetch('/api/accounts'),
+				fetch('/api/category-groups')
 			]);
 
 			if (!catRes.ok) throw new Error('Failed to load categories');
@@ -126,12 +131,27 @@
 				}
 				accountCurrencies = currencyMap;
 			}
+
+			// Get groups from DB
+			let dbGroups: string[] = [];
+			if (groupsRes.ok) {
+				const groupsData = await groupsRes.json();
+				dbGroups = (groupsData.groups || []).map((g: { name: string }) => g.name);
+			}
 			
 			// Group categories by group_name
 			const groupMap = new Map<string, Category[]>();
+
+			// First, add all groups from DB (even empty ones, except Hidden/Uncategorized which are special)
+			for (const groupName of dbGroups) {
+				if (groupName !== HIDDEN_GROUP && groupName !== UNCATEGORIZED) {
+					groupMap.set(groupName, []);
+				}
+			}
 			
 			for (const cat of categories) {
-				const groupName = cat.group_name || 'Uncategorized';
+				const groupName = cat.group_name || UNCATEGORIZED;
+				
 				if (!groupMap.has(groupName)) {
 					groupMap.set(groupName, []);
 				}
@@ -140,32 +160,44 @@
 			
 			// Convert to CategoryGroup array
 			let groupId = 1;
-			categoryGroups = Array.from(groupMap.entries()).map(([name, cats]) => {
-				const categoryBudgets: CategoryBudget[] = cats.map(cat => ({
-					id: cat.id,
-					category_id: cat.id,
-					name: cat.name,
-					assigned: 0,
-					activity: 0,
-					available: 0,
-					color: cat.color,
-					icon: cat.icon
-				}));
-				
-				// Calculate total spent for this group
-				const groupSpent = cats.reduce((total, cat) => {
-					return total + (spentByCategory.get(cat.id) || 0);
-				}, 0);
-				
-				return {
-					id: groupId++,
-					name,
-					assigned: groupSpent,  // Using assigned to store spent for the group
-					available: 0,
-					categories: categoryBudgets,
-					isExpanded: true
-				};
-			});
+			categoryGroups = Array.from(groupMap.entries())
+				// Filter out Uncategorized and Hidden if empty
+				.filter(([name, cats]) => (name !== UNCATEGORIZED && name !== HIDDEN_GROUP) || cats.length > 0)
+				.map(([name, cats]) => {
+					const categoryBudgets: CategoryBudget[] = cats.map(cat => ({
+						id: cat.id,
+						category_id: cat.id,
+						name: cat.name,
+						assigned: 0,
+						activity: 0,
+						available: 0,
+						color: cat.color,
+						icon: cat.icon
+					}));
+					
+					// Calculate total spent for this group
+					const groupSpent = cats.reduce((total, cat) => {
+						return total + (spentByCategory.get(cat.id) || 0);
+					}, 0);
+					
+					return {
+						id: groupId++,
+						name,
+						assigned: groupSpent,  // Using assigned to store spent for the group
+						available: 0,
+						categories: categoryBudgets,
+						// Uncategorized and Hidden collapsed by default
+						isExpanded: name !== UNCATEGORIZED && name !== HIDDEN_GROUP
+					};
+				})
+				// Sort: Hidden at the very end, Uncategorized before Hidden
+				.sort((a, b) => {
+					if (a.name === HIDDEN_GROUP) return 1;
+					if (b.name === HIDDEN_GROUP) return -1;
+					if (a.name === UNCATEGORIZED) return 1;
+					if (b.name === UNCATEGORIZED) return -1;
+					return a.name.localeCompare(b.name);
+				});
 		} catch (e) {
 			console.error('Failed to load categories:', e);
 			error = e instanceof Error ? e.message : 'Failed to load categories';
@@ -403,21 +435,21 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 12px 16px;
+		padding: 8px 12px;
 		background-color: var(--color-bg-secondary);
 		border: none;
-		min-height: 56px;
+		min-height: 40px;
 	}
 
 	.group-left {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 	}
 
 	.group-chevron {
-		width: 20px;
-		height: 20px;
+		width: 16px;
+		height: 16px;
 		color: var(--color-text-muted);
 		transition: transform 0.2s;
 	}
@@ -427,6 +459,7 @@
 	}
 
 	.group-name {
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
