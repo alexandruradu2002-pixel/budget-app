@@ -9,6 +9,9 @@ export { default as SettingsSection } from './ui/SettingsSection.svelte';
 export { default as StatCard } from './ui/StatCard.svelte';
 export { default as Button } from './ui/Button.svelte';
 export { default as Alert } from './ui/Alert.svelte';
+export { default as WorkInProgress } from './ui/WorkInProgress.svelte';
+export { default as Calculator } from './ui/Calculator.svelte';
+export { default as DatePicker } from './ui/DatePicker.svelte';
 
 // Feature Components
 export { default as TransactionModal } from './TransactionModal.svelte';

@@ -11,6 +11,7 @@ export const GET: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const params = parseSearchParams(event.url);
 	const type = params.getString('type'); // 'expense' | 'income'
+	const includeTargets = params.getString('includeTargets') === 'true';
 
 	let sql = 'SELECT * FROM categories WHERE user_id = ? AND is_active = 1';
 	const args: InValue[] = [user.userId];
@@ -24,21 +25,41 @@ export const GET: RequestHandler = async (event) => {
 
 	const result = await db.execute({ sql, args });
 
-	const categories = result.rows.map((row) => ({
-		id: row.id,
-		user_id: row.user_id,
-		name: row.name,
-		type: row.type,
-		color: row.color,
-		icon: row.icon,
-		parent_id: row.parent_id,
-		group_name: row.group_name || null,
-		is_active: row.is_active === 1,
-		is_hidden: row.is_hidden === 1 || false,
-		sort_order: row.sort_order || 0,
-		group_sort_order: row.group_sort_order || 0,
-		created_at: row.created_at
-	}));
+	// Get active budgets/targets for all categories if requested
+	let targetsMap = new Map<number, { amount: number; currency: string }>();
+	if (includeTargets) {
+		const budgetsResult = await db.execute({
+			sql: "SELECT category_id, amount, COALESCE(currency, 'RON') as currency FROM budgets WHERE user_id = ? AND is_active = 1",
+			args: [user.userId]
+		});
+		for (const row of budgetsResult.rows) {
+			targetsMap.set(Number(row.category_id), {
+				amount: Number(row.amount),
+				currency: String(row.currency)
+			});
+		}
+	}
+
+	const categories = result.rows.map((row) => {
+		const targetData = targetsMap.get(Number(row.id));
+		return {
+			id: row.id,
+			user_id: row.user_id,
+			name: row.name,
+			type: row.type,
+			color: row.color,
+			icon: row.icon,
+			parent_id: row.parent_id,
+			group_name: row.group_name || null,
+			is_active: row.is_active === 1,
+			is_hidden: row.is_hidden === 1 || false,
+			sort_order: row.sort_order || 0,
+			group_sort_order: row.group_sort_order || 0,
+			created_at: row.created_at,
+			target: targetData?.amount || null,
+			target_currency: targetData?.currency || null
+		};
+	});
 
 	return successResponse({ categories });
 };

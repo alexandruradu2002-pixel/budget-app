@@ -34,4 +34,6 @@ Thumbs.db
 *.swp
 *.swo
 
-.github/
+# GitHub - keep copilot instructions
+.github/*
+!.github/copilot-instructions.md

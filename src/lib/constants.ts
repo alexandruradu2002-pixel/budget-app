@@ -67,6 +67,7 @@ export const BUDGET_PERIOD_LABELS: Record<BudgetPeriodValue, string> = {
 // ---- Currency ----
 export const DEFAULT_CURRENCY = 'RON';
 
+// Main supported currencies (for settings/conversion)
 export const SUPPORTED_CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'] as const;
 
 export type CurrencyValue = (typeof SUPPORTED_CURRENCIES)[number];
@@ -77,6 +78,50 @@ export const CURRENCY_SYMBOLS: Record<CurrencyValue, string> = {
 	USD: '$',
 	GBP: '£'
 };
+
+// All currency symbols (for display purposes - includes international currencies)
+export const ALL_CURRENCY_SYMBOLS: Record<string, string> = {
+	RON: 'lei',
+	EUR: '€',
+	USD: '$',
+	GBP: '£',
+	CHF: 'Fr',
+	PLN: 'zł',
+	HUF: 'Ft',
+	CZK: 'Kč',
+	BGN: 'лв',
+	SEK: 'kr',
+	NOK: 'kr',
+	DKK: 'kr',
+	JPY: '¥',
+	CNY: '¥',
+	AUD: 'A$',
+	CAD: 'C$'
+};
+
+// Exchange rates to RON (base currency)
+// Note: In production, these should be fetched from an API
+export const EXCHANGE_RATES_TO_RON: Record<string, number> = {
+	RON: 1,
+	EUR: 4.97,
+	USD: 4.58,
+	GBP: 5.82,
+	CHF: 5.18,
+	PLN: 1.15,
+	HUF: 0.0125,
+	CZK: 0.20,
+	BGN: 2.54,
+	SEK: 0.43,
+	NOK: 0.42,
+	DKK: 0.67,
+	JPY: 0.030,
+	CNY: 0.63,
+	AUD: 2.98,
+	CAD: 3.28
+};
+
+// Currencies with prefix symbols (symbol before amount)
+export const PREFIX_SYMBOL_CURRENCIES = ['€', '$', '£', '¥', 'A$', 'C$'];
 
 // ---- Colors ----
 export const DEFAULT_ACCOUNT_COLOR = '#3B82F6';

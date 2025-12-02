@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
 	import type { CurrencyValue } from '$lib/constants';
-	import TransactionModal from '$lib/components/TransactionModal.svelte';
-	import { LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
+	import { TransactionModal, LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 	import { currencyStore } from '$lib/stores';
 
@@ -71,6 +71,7 @@
 	let accountCurrencies = $state<Map<number, CurrencyValue>>(new Map());
 
 	// Calculate total spent per category (converting to main currency)
+	// For spending: negative amounts become positive (expenses shown as positive spent)
 	// Track currencyStore.value to re-compute when main currency changes
 	let spentByCategory = $derived.by(() => {
 		// Access currencyStore.value to create reactivity dependency
@@ -81,14 +82,30 @@
 			if (t.category_id) {
 				// Get the currency of the transaction's account
 				const accountCurrency = accountCurrencies.get(t.account_id) || 'RON';
-				// Convert to main currency
-				const convertedAmount = currencyStore.convert(t.amount, accountCurrency);
+				// Convert to main currency - invert sign so expenses show as positive
+				const convertedAmount = currencyStore.convert(-t.amount, accountCurrency);
 				
 				const current = spent.get(t.category_id) || 0;
 				spent.set(t.category_id, current + convertedAmount);
 			}
 		}
 		return spent;
+	});
+
+	// Map of category_id to target { amount, currency }
+	let targetByCategory = $state<Map<number, { amount: number; currency: string }>>(new Map());
+	
+	// Converted targets in main currency (reactive to currency changes)
+	let convertedTargets = $derived.by(() => {
+		// Access currencyStore.value to create reactivity dependency
+		const _ = currencyStore.value;
+		
+		const converted = new Map<number, number>();
+		for (const [catId, target] of targetByCategory) {
+			const convertedAmount = currencyStore.convert(target.amount, target.currency as CurrencyValue);
+			converted.set(catId, convertedAmount);
+		}
+		return converted;
 	});
 
 	// Load categories and build groups
@@ -105,7 +122,7 @@
 
 			// Fetch categories, transactions, accounts, and groups in parallel
 			const [catRes, transRes, accountsRes, groupsRes] = await Promise.all([
-				fetch('/api/categories'),
+				fetch('/api/categories?includeTargets=true'),
 				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
 				fetch('/api/accounts'),
 				fetch('/api/category-groups')
@@ -115,6 +132,18 @@
 			
 			const catData = await catRes.json();
 			categories = catData.categories || [];
+			
+			// Build target map from categories (with currency)
+			const newTargetMap = new Map<number, { amount: number; currency: string }>();
+			for (const cat of categories) {
+				if (cat.target) {
+					newTargetMap.set(cat.id, {
+						amount: cat.target,
+						currency: cat.target_currency || 'RON'
+					});
+				}
+			}
+			targetByCategory = newTargetMap;
 			
 			if (transRes.ok) {
 				const transData = await transRes.json();
@@ -349,7 +378,8 @@
 		{:else}
 			<!-- Sticky Column Header -->
 			<div class="column-header-sticky">
-				<span class="column-header-label">Total Spent</span>
+				<span class="column-header-label">Target</span>
+				<span class="column-header-label">Spent</span>
 			</div>
 
 			{#each categoryGroups as group (group.id)}
@@ -366,11 +396,23 @@
 				<!-- Category Items -->
 				{#if group.isExpanded}
 					{#each group.categories as category (category.id)}
-						<button class="category-row">
+						{@const spent = spentByCategory.get(category.category_id) || 0}
+						{@const target = convertedTargets.get(category.category_id)}
+						{@const isOverBudget = target && spent > target}
+						{@const remaining = target ? Math.max(0, target - spent) : null}
+						<button 
+							class="category-row"
+							onclick={() => goto(`/plan/categories/${category.category_id}`)}
+						>
 							<span class="category-name">{category.name}</span>
 							<div class="category-values">
-								<span class="category-spent">
-									{formatCurrency(spentByCategory.get(category.category_id) || 0)}
+								{#if target}
+									<span class="category-target" class:over-budget={isOverBudget}>
+										{formatCurrency(remaining ?? 0)}
+									</span>
+								{/if}
+								<span class="category-spent" class:over-budget={isOverBudget}>
+									{formatCurrency(spent)}
 								</span>
 							</div>
 						</button>
@@ -495,6 +537,23 @@
 		display: flex;
 		align-items: center;
 		flex-shrink: 0;
+		gap: 8px;
+	}
+
+	.category-target {
+		padding: 4px 10px;
+		border-radius: 8px;
+		font-size: 12px;
+		font-weight: 600;
+		min-width: 65px;
+		text-align: center;
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-warning);
+	}
+
+	.category-target.over-budget {
+		background-color: rgba(239, 68, 68, 0.15);
+		color: var(--color-danger);
 	}
 
 	.category-spent {
@@ -506,6 +565,11 @@
 		text-align: center;
 		background-color: var(--color-bg-tertiary);
 		color: var(--color-text-primary);
+	}
+
+	.category-spent.over-budget {
+		background-color: rgba(239, 68, 68, 0.15);
+		color: var(--color-danger);
 	}
 
 	/* Error and Empty States */

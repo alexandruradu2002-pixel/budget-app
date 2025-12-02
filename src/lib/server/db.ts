@@ -311,6 +311,14 @@ export async function initializeDatabase() {
 		// Column already exists, ignore
 	}
 
+	// Budgets migrations
+	try {
+		await db.execute("ALTER TABLE budgets ADD COLUMN currency TEXT DEFAULT 'RON'");
+		console.log('✅ Added currency column to budgets');
+	} catch {
+		// Column already exists, ignore
+	}
+
 	// Accounts migrations
 	try {
 		await db.execute('ALTER TABLE accounts ADD COLUMN notes TEXT');

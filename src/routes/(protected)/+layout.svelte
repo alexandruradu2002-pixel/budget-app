@@ -1,9 +1,15 @@
 <script lang="ts">
 	// Protected layout - LOGIN DISABLED: Single user mode
 	import { page } from '$app/stores';
+	import { currencyStore } from '$lib/stores';
 	
 	let { children } = $props();
 	let currentPath = $derived($page.url.pathname);
+
+	// Initialize currency store (loads rates from API with daily caching)
+	$effect(() => {
+		currencyStore.init();
+	});
 
 	// Navigation items
 	const navItems = [
@@ -71,7 +77,6 @@
 	.main-content {
 		flex: 1;
 		padding-bottom: 70px; /* Space for bottom nav */
-		overflow-y: auto;
 	}
 
 	.bottom-nav {

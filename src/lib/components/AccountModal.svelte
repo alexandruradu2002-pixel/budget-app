@@ -6,12 +6,54 @@
 	let {
 		show = $bindable(false),
 		account = null as Account | null,
+		allAccounts = [] as Account[],
 		onSave = async () => {},
-		onClose = () => {}
+		onClose = () => {},
+		onCloseAccount = async (_id: number) => {}
 	} = $props();
 
 	// Determine if we're editing
 	let isEditing = $derived(account !== null);
+
+	// Exchange rates to RON (for display conversion)
+	const exchangeRates: Record<string, number> = {
+		RON: 1,
+		EUR: 4.97,
+		USD: 4.58,
+		GBP: 5.82,
+		CHF: 5.18,
+		PLN: 1.15,
+		HUF: 0.0125,
+		CZK: 0.20,
+		BGN: 2.54,
+		SEK: 0.43,
+		NOK: 0.42,
+		DKK: 0.67,
+		JPY: 0.030,
+		CNY: 0.63,
+		AUD: 2.98,
+		CAD: 3.28
+	};
+
+	// Currency symbols
+	const currencySymbols: Record<string, string> = {
+		RON: 'lei',
+		EUR: '€',
+		USD: '$',
+		GBP: '£',
+		CHF: 'Fr',
+		PLN: 'zł',
+		HUF: 'Ft',
+		CZK: 'Kč',
+		BGN: 'лв',
+		SEK: 'kr',
+		NOK: 'kr',
+		DKK: 'kr',
+		JPY: '¥',
+		CNY: '¥',
+		AUD: 'A$',
+		CAD: 'C$'
+	};
 
 	// Account types for selection (only 3 as requested)
 	const accountTypes = [
@@ -50,8 +92,46 @@
 	});
 
 	let saving = $state(false);
+	let closing = $state(false);
 	let showTypeSelector = $state(false);
 	let showCurrencySelector = $state(false);
+	let showCloseConfirm = $state(false);
+	let selectedTransferAccountId = $state<number | null>(null);
+
+	// Get other active accounts for transfer (excluding current account)
+	let otherAccounts = $derived.by(() => {
+		if (!account) return [];
+		return allAccounts.filter(a => a.is_active && a.id !== account.id);
+	});
+
+	// Get selected transfer account
+	let selectedTransferAccount = $derived(
+		otherAccounts.find(a => a.id === selectedTransferAccountId) || null
+	);
+
+	// Calculate converted amount for display
+	let convertedAmount = $derived.by(() => {
+		if (!account || !selectedTransferAccount) return 0;
+		const sourceCurrency = account.currency || 'RON';
+		const targetCurrency = selectedTransferAccount.currency || 'RON';
+		const sourceToRON = exchangeRates[sourceCurrency] || 1;
+		const targetToRON = exchangeRates[targetCurrency] || 1;
+		return (account.balance * sourceToRON) / targetToRON;
+	});
+
+	// Format amount with currency symbol
+	function formatWithCurrency(amount: number, currency: string): string {
+		const symbol = currencySymbols[currency] || currency;
+		const formatted = amount.toLocaleString('ro-RO', { 
+			minimumFractionDigits: 2, 
+			maximumFractionDigits: 2 
+		});
+		
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `${symbol}${formatted}`;
+		}
+		return `${formatted} ${symbol}`;
+	}
 
 	// Get display values
 	let selectedTypeLabel = $derived(
@@ -162,7 +242,55 @@
 	// Close modal
 	function closeModal() {
 		show = false;
+		showCloseConfirm = false;
+		selectedTransferAccountId = null;
 		onClose();
+	}
+
+	// Open close account confirmation
+	function openCloseConfirm() {
+		if (!account) return;
+		showCloseConfirm = true;
+		// Pre-select first available account if balance > 0
+		if (account.balance !== 0 && otherAccounts.length > 0) {
+			selectedTransferAccountId = otherAccounts[0].id;
+		}
+	}
+
+	// Close account (soft delete) with optional transfer
+	async function handleCloseAccount() {
+		if (!account) return;
+		
+		// If there's a balance, require transfer target
+		if (account.balance !== 0 && !selectedTransferAccountId) {
+			toast.error('Selectează un cont pentru transfer');
+			return;
+		}
+		
+		closing = true;
+		try {
+			let url = `/api/accounts?id=${account.id}`;
+			if (selectedTransferAccountId) {
+				url += `&transferTo=${selectedTransferAccountId}`;
+			}
+			
+			const response = await fetch(url, {
+				method: 'DELETE'
+			});
+
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.message || 'Nu s-a putut închide contul');
+			}
+
+			toast.success('Contul a fost închis');
+			await onCloseAccount(account.id);
+			closeModal();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Eroare la închiderea contului');
+		} finally {
+			closing = false;
+		}
 	}
 
 	// Handle type selection
@@ -300,6 +428,15 @@
 						Save Account
 					{/if}
 				</button>
+
+				{#if isEditing}
+					<button type="button" onclick={openCloseConfirm} class="btn-close-account">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+						</svg>
+						Close Account
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -364,6 +501,90 @@
 							{/if}
 						</button>
 					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Close Account Confirmation Sheet -->
+		{#if showCloseConfirm}
+			<div class="selector-overlay" onclick={() => showCloseConfirm = false} role="presentation"></div>
+			<div class="selector-sheet close-confirm-sheet">
+				<div class="selector-header">
+					<h3 class="selector-title">Close Account</h3>
+					<button class="selector-close" aria-label="Close" onclick={() => showCloseConfirm = false}>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				
+				<div class="close-confirm-content">
+					{#if account && account.balance !== 0}
+						<div class="transfer-info">
+							{#if account.balance > 0}
+								<p class="transfer-label">Transfer balance of <strong>{formatWithCurrency(account.balance, account.currency || 'RON')}</strong> to:</p>
+							{:else}
+								<p class="transfer-label">Deduct debt of <strong class="negative">{formatWithCurrency(Math.abs(account.balance), account.currency || 'RON')}</strong> from:</p>
+							{/if}
+							
+							{#if otherAccounts.length > 0}
+								<div class="account-select-list">
+									{#each otherAccounts as targetAccount}
+										<button 
+											class="account-select-item" 
+											class:selected={selectedTransferAccountId === targetAccount.id}
+											onclick={() => selectedTransferAccountId = targetAccount.id}
+										>
+											<div class="account-select-info">
+												<span class="account-select-name">{targetAccount.name}</span>
+												{#if targetAccount.currency && targetAccount.currency !== 'RON'}
+													<span class="account-select-currency">{targetAccount.currency}</span>
+												{/if}
+											</div>
+											{#if selectedTransferAccountId === targetAccount.id}
+												<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+												</svg>
+											{/if}
+										</button>
+									{/each}
+								</div>
+								
+								{#if selectedTransferAccount && account.currency !== selectedTransferAccount.currency}
+									<div class="conversion-info" class:negative={account.balance < 0}>
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+										</svg>
+										{#if account.balance > 0}
+											<span>Will be converted to <strong>{formatWithCurrency(convertedAmount, selectedTransferAccount.currency || 'RON')}</strong></span>
+										{:else}
+											<span>Will deduct <strong>{formatWithCurrency(Math.abs(convertedAmount), selectedTransferAccount.currency || 'RON')}</strong></span>
+										{/if}
+									</div>
+								{/if}
+							{:else}
+								<p class="no-accounts-warning">No other accounts available. The balance will remain in this closed account.</p>
+							{/if}
+						</div>
+					{:else}
+						<p class="close-confirm-text">Are you sure you want to close this account? You can reopen it later from the Closed section.</p>
+					{/if}
+					
+					<div class="close-confirm-actions">
+						<button class="btn-cancel" onclick={() => showCloseConfirm = false}>
+							Cancel
+						</button>
+						<button class="btn-confirm-close" onclick={handleCloseAccount} disabled={closing}>
+							{#if closing}
+								<svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+								</svg>
+								Closing...
+							{:else}
+								Close Account
+							{/if}
+						</button>
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -533,6 +754,9 @@
 	/* Action Buttons */
 	.action-buttons {
 		padding: 8px 0 24px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 	}
 
 	.btn-save {
@@ -561,6 +785,36 @@
 	}
 
 	.btn-save svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.btn-close-account {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		width: 100%;
+		padding: 16px;
+		background-color: var(--color-bg-secondary);
+		border: 1px solid var(--color-danger);
+		border-radius: 12px;
+		color: var(--color-danger);
+		font-size: 16px;
+		font-weight: 600;
+		min-height: 52px;
+	}
+
+	.btn-close-account:active:not(:disabled) {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.btn-close-account:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.btn-close-account svg {
 		width: 20px;
 		height: 20px;
 	}
@@ -689,6 +943,188 @@
 		height: 20px;
 		color: var(--color-primary);
 		flex-shrink: 0;
+	}
+
+	/* Close Confirm Sheet */
+	.close-confirm-sheet {
+		max-height: 80vh;
+	}
+
+	.close-confirm-content {
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.close-confirm-text {
+		font-size: 15px;
+		color: var(--color-text-secondary);
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	.transfer-info {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.transfer-label {
+		font-size: 15px;
+		color: var(--color-text-primary);
+		margin: 0;
+	}
+
+	.transfer-label strong {
+		color: var(--color-primary);
+	}
+
+	.transfer-label strong.negative {
+		color: var(--color-danger);
+	}
+
+	.account-select-list {
+		display: flex;
+		flex-direction: column;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 12px;
+		overflow: hidden;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+
+	.account-select-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 16px;
+		background: none;
+		border: none;
+		border-bottom: 1px solid var(--color-border);
+		text-align: left;
+		color: var(--color-text-primary);
+	}
+
+	.account-select-item:last-child {
+		border-bottom: none;
+	}
+
+	.account-select-item:active {
+		background-color: var(--color-bg-secondary);
+	}
+
+	.account-select-item.selected {
+		background-color: var(--color-bg-secondary);
+	}
+
+	.account-select-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.account-select-name {
+		font-size: 16px;
+	}
+
+	.account-select-currency {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		background-color: var(--color-bg-primary);
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+
+	.conversion-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 8px;
+		font-size: 14px;
+		color: var(--color-text-secondary);
+	}
+
+	.conversion-info svg {
+		width: 18px;
+		height: 18px;
+		color: var(--color-primary);
+		flex-shrink: 0;
+	}
+
+	.conversion-info.negative svg {
+		color: var(--color-danger);
+	}
+
+	.conversion-info strong {
+		color: var(--color-success);
+	}
+
+	.conversion-info.negative strong {
+		color: var(--color-danger);
+	}
+
+	.no-accounts-warning {
+		font-size: 14px;
+		color: var(--color-warning);
+		margin: 0;
+		padding: 12px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 8px;
+	}
+
+	.close-confirm-actions {
+		display: flex;
+		gap: 12px;
+		margin-top: 8px;
+	}
+
+	.btn-cancel {
+		flex: 1;
+		padding: 14px;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		border-radius: 12px;
+		color: var(--color-text-primary);
+		font-size: 16px;
+		font-weight: 500;
+		min-height: 48px;
+	}
+
+	.btn-cancel:active {
+		background-color: var(--color-border);
+	}
+
+	.btn-confirm-close {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px;
+		background-color: var(--color-danger);
+		border: none;
+		border-radius: 12px;
+		color: white;
+		font-size: 16px;
+		font-weight: 600;
+		min-height: 48px;
+	}
+
+	.btn-confirm-close:active:not(:disabled) {
+		opacity: 0.9;
+	}
+
+	.btn-confirm-close:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.btn-confirm-close svg {
+		width: 18px;
+		height: 18px;
 	}
 
 	/* Spin animation */

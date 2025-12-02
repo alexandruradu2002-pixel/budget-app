@@ -2,8 +2,56 @@
  * Formatting utilities for the budget app
  */
 
-import { CURRENCY_SYMBOLS, type CurrencyValue } from '$lib/constants';
+import { CURRENCY_SYMBOLS, ALL_CURRENCY_SYMBOLS, PREFIX_SYMBOL_CURRENCIES, type CurrencyValue } from '$lib/constants';
 import { currencyStore } from '$lib/stores';
+
+/**
+ * Get the symbol for any currency code
+ */
+export function getCurrencySymbol(currency: string): string {
+	return ALL_CURRENCY_SYMBOLS[currency] || currency;
+}
+
+/**
+ * Check if a currency symbol should be placed before the amount
+ */
+function isPrefixSymbol(symbol: string): boolean {
+	return PREFIX_SYMBOL_CURRENCIES.includes(symbol);
+}
+
+/**
+ * Format a number with any currency (supports all currencies in ALL_CURRENCY_SYMBOLS)
+ */
+export function formatWithCurrency(amount: number, currency: string): string {
+	const symbol = getCurrencySymbol(currency);
+	const formatted = amount.toLocaleString('ro-RO', { 
+		minimumFractionDigits: 2, 
+		maximumFractionDigits: 2 
+	});
+	
+	if (isPrefixSymbol(symbol)) {
+		return `${symbol}${formatted}`;
+	}
+	return `${formatted} ${symbol}`;
+}
+
+/**
+ * Format amount with currency, showing sign for negative values
+ */
+export function formatAmountWithCurrency(amount: number, currency: string): string {
+	const symbol = getCurrencySymbol(currency);
+	const absAmount = Math.abs(amount);
+	const formatted = absAmount.toLocaleString('ro-RO', { 
+		minimumFractionDigits: 2, 
+		maximumFractionDigits: 2 
+	});
+	const sign = amount < 0 ? '-' : '';
+	
+	if (isPrefixSymbol(symbol)) {
+		return `${sign}${symbol}${formatted}`;
+	}
+	return `${sign}${formatted} ${symbol}`;
+}
 
 /**
  * Format a number as currency using the main currency from store

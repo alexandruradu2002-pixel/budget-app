@@ -7,29 +7,10 @@
 		saveLearnedLocation,
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
+	import { getCurrencySymbol } from '$lib/utils/format';
 	import PayeeSelector from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
-
-	// Currency symbols map
-	const currencySymbols: Record<string, string> = {
-		RON: 'lei',
-		EUR: '€',
-		USD: '$',
-		GBP: '£',
-		CHF: 'Fr',
-		PLN: 'zł',
-		HUF: 'Ft',
-		CZK: 'Kč',
-		BGN: 'лв',
-		SEK: 'kr',
-		NOK: 'kr',
-		DKK: 'kr',
-		JPY: '¥',
-		CNY: '¥',
-		AUD: 'A$',
-		CAD: 'C$'
-	};
 
 	// Props
 	let {
@@ -38,6 +19,7 @@
 		accounts = [] as Account[],
 		categories = [] as Category[],
 		defaultAccountId = undefined as number | undefined,
+		defaultCategoryId = undefined as number | undefined,
 		onSave = async () => {},
 		onDelete = async (id: number) => {},
 		onClose = () => {}
@@ -168,12 +150,16 @@
 				const initialAccountId = defaultAccountId ?? accounts[0]?.id ?? 0;
 				const initialAccount = accounts.find(a => a.id === initialAccountId);
 				
+				// Determine the initial category: use defaultCategoryId if provided, otherwise first category
+				const initialCategoryId = defaultCategoryId ?? categories[0]?.id ?? 0;
+				const initialCategory = categories.find(c => c.id === initialCategoryId);
+				
 				formData = {
 					description: '',
 					amount: '0',
 					date: new Date().toISOString().split('T')[0],
 					account_id: initialAccountId,
-					category_id: categories[0]?.id || 0,
+					category_id: initialCategoryId,
 					notes: '',
 					isInflow: false,
 					isCleared: false,
@@ -182,7 +168,7 @@
 				calcDisplay = '0';
 				isNewInput = true;
 				// Set default display names
-				selectedCategoryName = categories[0]?.name || '';
+				selectedCategoryName = initialCategory?.name || categories[0]?.name || '';
 				selectedAccountName = initialAccount?.name || accounts[0]?.name || '';
 
 				// Fetch location and auto-complete for new transactions
@@ -229,7 +215,7 @@
 	let selectedAccountCurrency = $derived(() => {
 		const account = accounts.find(a => a.id === formData.account_id);
 		const currency = account?.currency || 'RON';
-		return currencySymbols[currency] || currency;
+		return getCurrencySymbol(currency);
 	});
 
 	// Formatted display amount with sign and account currency (with thousand separators)

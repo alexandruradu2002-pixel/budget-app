@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
-	import { formatCurrency } from '$lib/utils/format';
+	import { formatCurrency, formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
+	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
 
 	interface CurrencyTotal {
 		currency: string;
@@ -15,46 +16,6 @@
 		accounts: Account[];
 		currencyTotals: CurrencyTotal[];
 	}
-
-	// Exchange rates to RON (approximate, can be updated)
-	const exchangeRates: Record<string, number> = {
-		RON: 1,
-		EUR: 4.97,
-		USD: 4.58,
-		GBP: 5.82,
-		CHF: 5.18,
-		PLN: 1.15,
-		HUF: 0.0125,
-		CZK: 0.20,
-		BGN: 2.54,
-		SEK: 0.43,
-		NOK: 0.42,
-		DKK: 0.67,
-		JPY: 0.030,
-		CNY: 0.63,
-		AUD: 2.98,
-		CAD: 3.28
-	};
-
-	// Currency symbols
-	const currencySymbols: Record<string, string> = {
-		RON: 'lei',
-		EUR: '€',
-		USD: '$',
-		GBP: '£',
-		CHF: 'Fr',
-		PLN: 'zł',
-		HUF: 'Ft',
-		CZK: 'Kč',
-		BGN: 'лв',
-		SEK: 'kr',
-		NOK: 'kr',
-		DKK: 'kr',
-		JPY: '¥',
-		CNY: '¥',
-		AUD: 'A$',
-		CAD: 'C$'
-	};
 
 	let loading = $state(true);
 	let accounts = $state<Account[]>([]);
@@ -77,7 +38,7 @@
 		return Object.entries(totals)
 			.map(([currency, amount]) => ({
 				currency,
-				symbol: currencySymbols[currency] || currency,
+				symbol: getCurrencySymbol(currency),
 				amount
 			}))
 			.sort((a, b) => {
@@ -149,14 +110,14 @@
 		return Object.entries(totals)
 			.map(([currency, amount]) => ({
 				currency,
-				symbol: currencySymbols[currency] || currency,
+				symbol: getCurrencySymbol(currency),
 				amount
 			}))
 			.sort((a, b) => {
 				// RON first, then by amount (converted to RON)
 				if (a.currency === 'RON') return -1;
 				if (b.currency === 'RON') return 1;
-				return (b.amount * (exchangeRates[b.currency] || 1)) - (a.amount * (exchangeRates[a.currency] || 1));
+				return (b.amount * (EXCHANGE_RATES_TO_RON[b.currency] || 1)) - (a.amount * (EXCHANGE_RATES_TO_RON[a.currency] || 1));
 			});
 	});
 
@@ -165,29 +126,13 @@
 		const activeAccounts = accounts.filter(a => a.is_active);
 		return activeAccounts.reduce((sum, account) => {
 			const currency = account.currency || 'RON';
-			const rate = exchangeRates[currency] || 1;
+			const rate = EXCHANGE_RATES_TO_RON[currency] || 1;
 			return sum + (account.balance * rate);
 		}, 0);
 	});
 
 	// Check if we have multiple currencies
 	let hasMultipleCurrencies = $derived(currencyTotals.length > 1);
-
-	// Format amount with currency symbol
-	function formatWithCurrency(amount: number, currency: string): string {
-		const symbol = currencySymbols[currency] || currency;
-		const formatted = amount.toLocaleString('ro-RO', { 
-			minimumFractionDigits: 2, 
-			maximumFractionDigits: 2 
-		});
-		
-		// For currencies with prefix symbols
-		if (['€', '$', '£', '¥'].includes(symbol)) {
-			return `${symbol}${formatted}`;
-		}
-		// For currencies with suffix
-		return `${formatted} ${symbol}`;
-	}
 
 	// Format account balance with its currency
 	function formatAccountBalance(account: Account): string {
@@ -220,7 +165,6 @@
 		// Get current group accounts directly
 		const group = accountGroups[groupIndex];
 		if (!group) {
-			console.error('Group not found:', groupIndex);
 			return;
 		}
 		
@@ -228,15 +172,8 @@
 		const newIndex = direction === 'up' ? accountIndex - 1 : accountIndex + 1;
 		
 		if (newIndex < 0 || newIndex >= groupAccounts.length) {
-			console.log('Invalid move:', { accountIndex, newIndex, direction, length: groupAccounts.length });
 			return;
 		}
-		
-		console.log('Moving account:', { 
-			from: accountIndex, 
-			to: newIndex, 
-			account: groupAccounts[accountIndex].name 
-		});
 		
 		// Swap the accounts
 		const temp = groupAccounts[accountIndex];
@@ -249,8 +186,6 @@
 			sort_order: index
 		}));
 		
-		console.log('Saving order:', accountsToUpdate);
-		
 		// Save to database
 		try {
 			const response = await fetch('/api/accounts', {
@@ -259,16 +194,27 @@
 				body: JSON.stringify({ accounts: accountsToUpdate })
 			});
 			
-			console.log('Response:', response.status);
-			
 			if (response.ok) {
 				// Reload accounts to reflect the new order
 				await loadAccounts();
-			} else {
-				console.error('Failed to save:', await response.text());
 			}
 		} catch (error) {
-			console.error('Failed to save account order:', error);
+			// Silent fail - UI will remain unchanged
+		}
+	}
+
+	async function reopenAccount(accountId: number) {
+		try {
+			const response = await fetch(`/api/accounts?id=${accountId}&action=reopen`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' }
+			});
+			
+			if (response.ok) {
+				await loadAccounts();
+			}
+		} catch (error) {
+			// Silent fail - UI will remain unchanged
 		}
 	}
 </script>
@@ -432,8 +378,22 @@
 							<div class="account-row closed has-border">
 								<div class="account-info">
 									<span class="account-name muted">{account.name}</span>
+									{#if account.currency && account.currency !== 'RON'}
+										<span class="account-currency">{account.currency}</span>
+									{/if}
 								</div>
-								<span class="account-balance muted">{formatCurrency(account.balance)}</span>
+								<div class="closed-actions">
+									<span class="account-balance muted">{formatAccountBalance(account)}</span>
+									<button 
+										class="reopen-button"
+										onclick={() => reopenAccount(account.id)}
+										aria-label="Reopen account"
+									>
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+										</svg>
+									</button>
+								</div>
 							</div>
 						{/each}
 					{/if}
@@ -459,8 +419,10 @@
 <AccountModal 
 	bind:show={showAccountModal}
 	account={editingAccount}
+	allAccounts={accounts}
 	onSave={loadAccounts}
 	onClose={() => { editingAccount = null; }}
+	onCloseAccount={loadAccounts}
 />
 
 <style>
@@ -693,6 +655,35 @@
 	.account-balance.muted {
 		color: var(--color-text-muted);
 		font-weight: 400;
+	}
+
+	/* Closed Actions */
+	.closed-actions {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.reopen-button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		border-radius: 8px;
+		color: var(--color-primary);
+		cursor: pointer;
+	}
+
+	.reopen-button:active {
+		background-color: var(--color-border);
+	}
+
+	.reopen-button svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	/* Empty State */

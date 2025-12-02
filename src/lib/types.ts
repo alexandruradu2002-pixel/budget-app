@@ -55,6 +55,8 @@ export interface Category {
 	is_active: boolean;
 	is_hidden: boolean; // For hidden categories from YNAB
 	created_at: string;
+	target?: number | null; // Monthly budget target amount (from budgets table)
+	target_currency?: string | null; // Currency of the target (from budgets table)
 }
 
 // ---- Transactions ----

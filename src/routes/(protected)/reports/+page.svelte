@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PageHeader, HeaderButton } from '$lib/components';
+	import { PageHeader, HeaderButton, WorkInProgress } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 	
 	// Reports/Reflect page
@@ -46,6 +46,8 @@
 		{ month: 'Dec', value: 21 }
 	];
 </script>
+
+<WorkInProgress />
 
 <div class="reports-page">
 	<!-- Header -->

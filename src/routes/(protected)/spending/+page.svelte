@@ -1,27 +1,22 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
-	import { formatDate } from '$lib/utils/format';
+	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 
-	// Currency symbols map
-	const currencySymbols: Record<string, string> = {
-		RON: 'lei',
-		EUR: '€',
-		USD: '$',
-		GBP: '£',
-		CHF: 'Fr',
-		PLN: 'zł',
-		HUF: 'Ft',
-		CZK: 'Kč',
-		BGN: 'лв',
-		SEK: 'kr',
-		NOK: 'kr',
-		DKK: 'kr',
-		JPY: '¥',
-		CNY: '¥',
-		AUD: 'A$',
-		CAD: 'C$'
-	};
+	// Transaction payload type for save operations
+	interface TransactionPayload {
+		id?: number;
+		account_id: number;
+		category_id?: number;
+		amount: number;
+		description: string;
+		date: string;
+		notes?: string;
+		payee?: string;
+		memo?: string;
+		flag?: string;
+		cleared?: string;
+	}
 
 	let loading = $state(true);
 	let transactions = $state<Transaction[]>([]);
@@ -36,18 +31,7 @@
 	function formatAmountWithCurrency(amount: number, accountId: number): string {
 		const account = accounts.find(a => a.id === accountId);
 		const currency = account?.currency || 'RON';
-		const symbol = currencySymbols[currency] || currency;
-		const absAmount = Math.abs(amount);
-		const formatted = absAmount.toLocaleString('ro-RO', { 
-			minimumFractionDigits: 2, 
-			maximumFractionDigits: 2 
-		});
-		const sign = amount < 0 ? '-' : '';
-		
-		if (['€', '$', '£', '¥'].includes(symbol)) {
-			return `${sign}${symbol}${formatted}`;
-		}
-		return `${sign}${formatted} ${symbol}`;
+		return formatAmountUtil(amount, currency);
 	}
 
 	let groupedTransactions = $derived.by(() => {
@@ -81,7 +65,7 @@
 		}
 	}
 
-	async function handleSaveTransaction(payload: any) {
+	async function handleSaveTransaction(payload: TransactionPayload) {
 		try {
 			const res = await fetch('/api/transactions', {
 				method: payload.id ? 'PUT' : 'POST',

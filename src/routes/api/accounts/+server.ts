@@ -98,17 +98,85 @@ export const PUT: RequestHandler = async (event) => {
 	return successResponse({ message: 'Account updated' });
 };
 
-// DELETE /api/accounts - Soft delete an account
+// DELETE /api/accounts - Soft delete an account with optional balance transfer
 export const DELETE: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const params = parseSearchParams(event.url);
 	const id = params.getInt('id');
+	const transferToId = params.getInt('transferTo');
 
 	if (!id) {
 		throw error(400, 'Account ID is required');
 	}
 
 	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
+
+	// Get the account being closed
+	const sourceResult = await db.execute({
+		sql: 'SELECT balance, currency FROM accounts WHERE id = ? AND user_id = ?',
+		args: [id, user.userId]
+	});
+
+	if (sourceResult.rows.length === 0) {
+		throw error(404, 'Account not found');
+	}
+
+	const sourceBalance = sourceResult.rows[0].balance as number;
+	const sourceCurrency = sourceResult.rows[0].currency as string;
+
+	// If there's a balance and a transfer target, do the transfer
+	if (sourceBalance !== 0 && transferToId) {
+		await verifyOwnership(db, 'accounts', transferToId, user.userId, 'Target account');
+
+		// Get target account currency
+		const targetResult = await db.execute({
+			sql: 'SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND is_active = 1',
+			args: [transferToId, user.userId]
+		});
+
+		if (targetResult.rows.length === 0) {
+			throw error(404, 'Target account not found or inactive');
+		}
+
+		const targetCurrency = targetResult.rows[0].currency as string;
+
+		// Exchange rates to RON (for conversion)
+		const exchangeRates: Record<string, number> = {
+			RON: 1,
+			EUR: 4.97,
+			USD: 4.58,
+			GBP: 5.82,
+			CHF: 5.18,
+			PLN: 1.15,
+			HUF: 0.0125,
+			CZK: 0.20,
+			BGN: 2.54,
+			SEK: 0.43,
+			NOK: 0.42,
+			DKK: 0.67,
+			JPY: 0.030,
+			CNY: 0.63,
+			AUD: 2.98,
+			CAD: 3.28
+		};
+
+		// Convert: source -> RON -> target
+		const sourceToRON = exchangeRates[sourceCurrency] || 1;
+		const targetToRON = exchangeRates[targetCurrency] || 1;
+		const convertedAmount = (sourceBalance * sourceToRON) / targetToRON;
+
+		// Update target account balance
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [convertedAmount, transferToId, user.userId]
+		});
+
+		// Set source account balance to 0
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+	}
 
 	// Soft delete
 	await db.execute({
@@ -119,11 +187,27 @@ export const DELETE: RequestHandler = async (event) => {
 	return successResponse({ message: 'Account deleted' });
 };
 
-// PATCH /api/accounts - Reorder accounts
+// PATCH /api/accounts - Reorder accounts or reopen account
 export const PATCH: RequestHandler = async (event) => {
 	const user = requireAuth(event);
-	const body = await event.request.json();
+	const params = parseSearchParams(event.url);
+	const action = params.getString('action');
+	const id = params.getInt('id');
 
+	// Handle reopen action
+	if (action === 'reopen' && id) {
+		await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
+		
+		await db.execute({
+			sql: 'UPDATE accounts SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+		
+		return successResponse({ message: 'Account reopened' });
+	}
+
+	// Handle reorder
+	const body = await event.request.json();
 	const { accounts } = body as { accounts: { id: number; sort_order: number }[] };
 	
 	if (!accounts || !Array.isArray(accounts)) {
