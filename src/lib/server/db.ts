@@ -150,6 +150,19 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// Category Groups table (persists empty groups)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS category_groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			sort_order INTEGER DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE(user_id, name)
+		)
+	`);
+
 	// Create indexes (only for columns that always exist)
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)');
@@ -159,6 +172,7 @@ export async function initializeDatabase() {
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_user_id ON budget_allocations(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_month ON budget_allocations(month)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_category_groups_user_id ON category_groups(user_id)');
 
 	// Migrations: Add missing columns to existing tables
 	// Categories migrations
@@ -172,6 +186,20 @@ export async function initializeDatabase() {
 	try {
 		await db.execute('ALTER TABLE categories ADD COLUMN is_hidden BOOLEAN DEFAULT 0');
 		console.log('✅ Added is_hidden column to categories');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0');
+		console.log('✅ Added sort_order column to categories');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE categories ADD COLUMN group_sort_order INTEGER DEFAULT 0');
+		console.log('✅ Added group_sort_order column to categories');
 	} catch {
 		// Column already exists, ignore
 	}

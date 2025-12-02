@@ -8,6 +8,19 @@
 	let currentDate = $state(new Date());
 	let showMonthPicker = $state(false);
 
+	// Generate available months (last 12 months + next 12 months)
+	let availableMonths = $derived.by(() => {
+		const months: Date[] = [];
+		const now = new Date();
+		
+		// Start from 12 months ago
+		for (let i = -12; i <= 12; i++) {
+			const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+			months.push(date);
+		}
+		return months;
+	});
+
 	// Transaction modal state
 	let showTransactionModal = $state(false);
 	let accounts = $state<Account[]>([]);
@@ -110,11 +123,6 @@
 		}
 	}
 
-	// Load data on mount
-	$effect(() => {
-		loadCategories();
-	});
-
 	// Load accounts and categories for the modal
 	async function loadModalData() {
 		try {
@@ -155,9 +163,6 @@
 
 	let displayMonth = $derived(formatMonthYear(currentDate));
 
-	// Ready to assign amount
-	let readyToAssign = $state(0);
-
 	function toggleGroup(groupId: number) {
 		categoryGroups = categoryGroups.map(group => 
 			group.id === groupId 
@@ -165,43 +170,65 @@
 				: group
 		);
 	}
+
+	// Month navigation functions
+	function toggleMonthPicker() {
+		showMonthPicker = !showMonthPicker;
+	}
+
+	function selectMonth(date: Date) {
+		currentDate = date;
+		showMonthPicker = false;
+	}
+
+	function isCurrentMonth(date: Date): boolean {
+		return date.getFullYear() === currentDate.getFullYear() && 
+			   date.getMonth() === currentDate.getMonth();
+	}
+
+	// Reload data when month changes
+	$effect(() => {
+		// Track currentDate to trigger reload
+		const _ = currentDate.getTime();
+		loadCategories();
+	});
 </script>
 
 <div class="plan-page">
 	<!-- Header with month and actions -->
-	<PageHeader title={displayMonth}>
-		<HeaderButton label="Filter categories">
-			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<circle cx="12" cy="12" r="9" stroke-width="2"/>
-				<line x1="8" y1="12" x2="16" y2="12" stroke-width="2"/>
-			</svg>
-		</HeaderButton>
-		<HeaderButton label="Edit categories">
-			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-			</svg>
-		</HeaderButton>
-		<HeaderButton label="More options">
-			<svg fill="currentColor" viewBox="0 0 24 24">
-				<circle cx="12" cy="5" r="1.5"/>
-				<circle cx="12" cy="12" r="1.5"/>
-				<circle cx="12" cy="19" r="1.5"/>
+	<PageHeader title={displayMonth} onTitleClick={toggleMonthPicker}>
+		<HeaderButton label="Edit categories" href="/plan/categories">
+			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
 			</svg>
 		</HeaderButton>
 	</PageHeader>
 
-	<!-- Ready to Assign Banner -->
-	<div class="banner-container">
-		<a href="/plan/assign" class="ready-banner" class:positive={readyToAssign > 0} class:negative={readyToAssign < 0}>
-			<span class="banner-amount">{formatCurrency(readyToAssign)}</span>
-			<div class="banner-right">
-				<span class="banner-text">Ready to Assign</span>
-				<svg class="banner-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-				</svg>
+	<!-- Month Picker Dropdown -->
+	{#if showMonthPicker}
+		<button class="month-picker-overlay" onclick={toggleMonthPicker} aria-label="Close month picker"></button>
+		<div class="month-picker">
+			<div class="month-picker-header">
+				<span>Select Month</span>
+				<button class="close-picker" onclick={toggleMonthPicker} aria-label="Close">
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
 			</div>
-		</a>
-	</div>
+			<div class="month-list">
+				{#each availableMonths as month (month.getTime())}
+					<button 
+						class="month-option" 
+						class:selected={isCurrentMonth(month)}
+						onclick={() => selectMonth(month)}
+					>
+						{formatMonthYear(month)}
+					</button>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	<!-- Category Groups List -->
 	<div class="categories-list">
@@ -264,53 +291,6 @@
 		flex-direction: column;
 		height: calc(100vh - 70px);
 		height: calc(100dvh - 70px);
-	}
-
-	/* Banner */
-	.banner-container {
-		padding: 0 16px 12px;
-	}
-
-	.ready-banner {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 14px 16px;
-		border-radius: 12px;
-		background-color: var(--color-bg-tertiary);
-		text-decoration: none;
-	}
-
-	.ready-banner.positive {
-		background-color: var(--color-success);
-	}
-
-	.ready-banner.negative {
-		background-color: var(--color-danger);
-	}
-
-	.banner-amount {
-		font-size: 18px;
-		font-weight: 700;
-		color: white;
-	}
-
-	.banner-right {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.banner-text {
-		font-size: 14px;
-		font-weight: 500;
-		color: white;
-	}
-
-	.banner-chevron {
-		width: 20px;
-		height: 20px;
-		color: white;
 	}
 
 	/* Categories List */
@@ -435,5 +415,88 @@
 
 	.retry-btn:hover {
 		background-color: var(--color-primary-hover);
+	}
+
+	/* Month Picker */
+	.month-picker-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		z-index: 100;
+		border: none;
+		cursor: default;
+	}
+
+	.month-picker {
+		position: fixed;
+		top: 60px;
+		left: 16px;
+		right: 16px;
+		max-width: 400px;
+		max-height: 60vh;
+		background-color: var(--color-bg-secondary);
+		border-radius: 12px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+		z-index: 101;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.month-picker-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px;
+		border-bottom: 1px solid var(--color-border);
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.close-picker {
+		background: none;
+		border: none;
+		padding: 4px;
+		cursor: pointer;
+		color: var(--color-text-muted);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.close-picker:hover {
+		color: var(--color-text-primary);
+	}
+
+	.month-list {
+		overflow-y: auto;
+		padding: 8px;
+	}
+
+	.month-option {
+		display: block;
+		width: 100%;
+		padding: 12px 16px;
+		background: none;
+		border: none;
+		border-radius: 8px;
+		text-align: left;
+		font-size: 15px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+		min-height: 44px;
+	}
+
+	.month-option:hover {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.month-option.selected {
+		background-color: var(--color-primary);
+		color: white;
+		font-weight: 600;
 	}
 </style>

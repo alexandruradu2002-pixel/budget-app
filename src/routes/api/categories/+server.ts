@@ -20,7 +20,7 @@ export const GET: RequestHandler = async (event) => {
 		args.push(type);
 	}
 
-	sql += ' ORDER BY name ASC';
+	sql += ' ORDER BY COALESCE(group_sort_order, 999), COALESCE(group_name, "zzz"), COALESCE(sort_order, 999), name ASC';
 
 	const result = await db.execute({ sql, args });
 
@@ -35,6 +35,8 @@ export const GET: RequestHandler = async (event) => {
 		group_name: row.group_name || null,
 		is_active: row.is_active === 1,
 		is_hidden: row.is_hidden === 1 || false,
+		sort_order: row.sort_order || 0,
+		group_sort_order: row.group_sort_order || 0,
 		created_at: row.created_at
 	}));
 
@@ -50,6 +52,7 @@ export const POST: RequestHandler = async (event) => {
 	const color = data.color ?? '#6B7280';
 	const icon = data.icon ?? null;
 	const parent_id = data.parent_id ?? null;
+	const group_name = data.group_name ?? null;
 
 	// Check for duplicate name
 	const existing = await db.execute({
@@ -61,9 +64,9 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const result = await db.execute({
-		sql: `INSERT INTO categories (user_id, name, type, color, icon, parent_id)
-			  VALUES (?, ?, ?, ?, ?, ?)`,
-		args: [user.userId, name, type, color, icon, parent_id]
+		sql: `INSERT INTO categories (user_id, name, type, color, icon, parent_id, group_name)
+			  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, name, type, color, icon, parent_id, group_name]
 	});
 
 	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Category created' });
@@ -90,12 +93,13 @@ export const PUT: RequestHandler = async (event) => {
 	const color = parsed.data.color ?? '#6B7280';
 	const icon = parsed.data.icon ?? null;
 	const parent_id = parsed.data.parent_id ?? null;
+	const group_name = parsed.data.group_name ?? null;
 
 	await db.execute({
 		sql: `UPDATE categories 
-			  SET name = ?, type = ?, color = ?, icon = ?, parent_id = ?
+			  SET name = ?, type = ?, color = ?, icon = ?, parent_id = ?, group_name = ?
 			  WHERE id = ? AND user_id = ?`,
-		args: [name, type, color, icon, parent_id, id, user.userId]
+		args: [name, type, color, icon, parent_id, group_name, id, user.userId]
 	});
 
 	return successResponse({ message: 'Category updated' });
