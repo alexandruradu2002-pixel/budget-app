@@ -12,9 +12,11 @@ export { default as Alert } from './ui/Alert.svelte';
 
 // Feature Components
 export { default as TransactionModal } from './TransactionModal.svelte';
+export { default as AccountModal } from './AccountModal.svelte';
 export { default as PayeeSelector } from './PayeeSelector.svelte';
 export { default as CategorySelector } from './CategorySelector.svelte';
 export { default as AccountSelector } from './AccountSelector.svelte';
 
 // Settings Components
 export { default as YNABImport } from './settings/YNABImport.svelte';
+export { default as CurrencySettings } from './settings/CurrencySettings.svelte';

@@ -1,6 +1,39 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
-	import { formatCurrency } from '$lib/utils/format';
+
+	// Currency symbols map
+	const currencySymbols: Record<string, string> = {
+		RON: 'lei',
+		EUR: '€',
+		USD: '$',
+		GBP: '£',
+		CHF: 'Fr',
+		PLN: 'zł',
+		HUF: 'Ft',
+		CZK: 'Kč',
+		BGN: 'лв',
+		SEK: 'kr',
+		NOK: 'kr',
+		DKK: 'kr',
+		JPY: '¥',
+		CNY: '¥',
+		AUD: 'A$',
+		CAD: 'C$'
+	};
+
+	// Format amount with account's currency
+	function formatWithCurrency(amount: number, currency: string = 'RON'): string {
+		const symbol = currencySymbols[currency] || currency;
+		const formatted = amount.toLocaleString('ro-RO', { 
+			minimumFractionDigits: 2, 
+			maximumFractionDigits: 2 
+		});
+		
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `${symbol}${formatted}`;
+		}
+		return `${formatted} ${symbol}`;
+	}
 
 	// Props
 	let {
@@ -11,18 +44,23 @@
 	} = $props();
 
 	// State
-	let searchQuery = $state('');
 	let accounts = $state<Account[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 
-	// Filter accounts by search
-	let filteredAccounts = $derived(() => {
-		if (!searchQuery) return accounts;
-		return accounts.filter(a => 
-			a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			a.type.toLowerCase().includes(searchQuery.toLowerCase())
-		);
+	// Group accounts by type
+	let groupedAccounts = $derived(() => {
+		const groups: Record<string, Account[]> = {};
+		
+		for (const account of accounts) {
+			const groupName = getAccountTypeLabel(account.type);
+			if (!groups[groupName]) {
+				groups[groupName] = [];
+			}
+			groups[groupName].push(account);
+		}
+
+		return groups;
 	});
 
 	// Load accounts when modal opens
@@ -56,24 +94,12 @@
 
 	function closeModal() {
 		show = false;
-		searchQuery = '';
 		onClose();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
 			closeModal();
-		}
-	}
-
-	function getAccountTypeIcon(type: string): string {
-		switch (type) {
-			case 'checking': return 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z';
-			case 'savings': return 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z';
-			case 'credit_card': return 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z';
-			case 'cash': return 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z';
-			case 'investment': return 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6';
-			default: return 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z';
 		}
 	}
 
@@ -84,6 +110,7 @@
 			case 'credit_card': return 'Credit Card';
 			case 'cash': return 'Cash';
 			case 'investment': return 'Investment';
+			case 'tracking': return 'Tracking';
 			default: return 'Other';
 		}
 	}
@@ -100,31 +127,9 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</button>
-			<h2 class="modal-title">Select Account</h2>
+			<h2 class="modal-title">Account</h2>
 			<div class="header-spacer"></div>
 		</header>
-
-		<!-- Search Input -->
-		<div class="search-container">
-			<div class="search-input-wrapper">
-				<svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-				</svg>
-				<input
-					type="text"
-					bind:value={searchQuery}
-					placeholder="Search accounts..."
-					class="search-input"
-				/>
-				{#if searchQuery}
-					<button aria-label="Clear search" onclick={() => searchQuery = ''} class="clear-btn">
-						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				{/if}
-			</div>
-		</div>
 
 		<!-- Content -->
 		<div class="modal-content">
@@ -138,42 +143,45 @@
 					<p>{error}</p>
 					<button onclick={() => loadAccounts()} class="retry-btn">Try Again</button>
 				</div>
-			{:else if filteredAccounts().length === 0}
+			{:else if accounts.length === 0}
 				<div class="empty-state">
 					<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
 					</svg>
 					<p class="empty-title">No accounts found</p>
-					<p class="empty-text">
-						{searchQuery ? 'Try a different search term' : 'Add some accounts to get started'}
-					</p>
+					<p class="empty-text">Add some accounts to get started</p>
 				</div>
 			{:else}
-				<!-- Accounts List -->
+				<!-- Accounts List grouped by type -->
 				<div class="accounts-list">
-					{#each filteredAccounts() as account (account.id)}
-						<button 
-							class="account-item"
-							class:selected={selectedAccountId === account.id}
-							onclick={() => selectAccount(account)}
-						>
-							<div class="account-icon" style="background-color: {account.color || 'var(--color-primary)'}">
-								<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-									<path stroke-linecap="round" stroke-linejoin="round" d={getAccountTypeIcon(account.type)} />
-								</svg>
+					{#each Object.entries(groupedAccounts()) as [groupName, groupAccounts] (groupName)}
+						<div class="account-group">
+							<div class="group-header">
+								<span class="group-name">{groupName}</span>
 							</div>
-							<div class="account-info">
-								<span class="account-name">{account.name}</span>
-								<span class="account-details">
-									{getAccountTypeLabel(account.type)} • {formatCurrency(account.balance)}
-								</span>
+							<div class="group-items">
+								{#each groupAccounts as account (account.id)}
+									<button 
+										class="account-item"
+										class:selected={selectedAccountId === account.id}
+										onclick={() => selectAccount(account)}
+									>
+										<div class="radio-circle" class:checked={selectedAccountId === account.id}>
+											{#if selectedAccountId === account.id}
+												<div class="radio-dot"></div>
+											{/if}
+										</div>
+										<div class="account-info">
+											<span class="account-name">{account.name}</span>
+											{#if account.currency && account.currency !== 'RON'}
+												<span class="currency-tag">{account.currency}</span>
+											{/if}
+										</div>
+										<span class="account-balance">{formatWithCurrency(account.balance, account.currency)}</span>
+									</button>
+								{/each}
 							</div>
-							{#if selectedAccountId === account.id}
-								<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-									<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-								</svg>
-							{/if}
-						</button>
+						</div>
 					{/each}
 				</div>
 			{/if}
@@ -232,75 +240,45 @@
 		width: 44px;
 	}
 
-	/* Search */
-	.search-container {
-		padding: 16px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.search-input-wrapper {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		background-color: var(--color-bg-secondary);
-		border-radius: 12px;
-		padding: 0 16px;
-	}
-
-	.search-icon {
-		width: 20px;
-		height: 20px;
-		color: var(--color-text-muted);
-		flex-shrink: 0;
-	}
-
-	.search-input {
-		flex: 1;
-		background: transparent;
-		border: none;
-		padding: 14px 0;
-		font-size: 16px;
-		color: var(--color-text-primary);
-		outline: none;
-	}
-
-	.search-input::placeholder {
-		color: var(--color-text-muted);
-	}
-
-	.clear-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		background-color: var(--color-bg-tertiary);
-		border: none;
-		border-radius: 50%;
-		color: var(--color-text-muted);
-	}
-
-	.clear-btn svg {
-		width: 16px;
-		height: 16px;
-	}
-
 	/* Content */
 	.modal-content {
 		flex: 1;
 		overflow-y: auto;
+		padding: 16px;
 	}
 
 	/* Accounts List */
 	.accounts-list {
 		display: flex;
 		flex-direction: column;
+		gap: 20px;
+	}
+
+	.account-group {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.group-header {
+		padding: 0 4px 8px;
+	}
+
+	.group-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-secondary);
+	}
+
+	.group-items {
+		background-color: var(--color-bg-secondary);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 
 	.account-item {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 12px;
 		padding: 16px;
 		background: none;
 		border: none;
@@ -310,53 +288,68 @@
 		cursor: pointer;
 	}
 
+	.account-item:last-child {
+		border-bottom: none;
+	}
+
 	.account-item:active {
-		background-color: var(--color-bg-secondary);
+		background-color: var(--color-bg-tertiary);
 	}
 
-	.account-item.selected {
-		background-color: var(--color-bg-secondary);
-	}
-
-	.account-icon {
-		width: 44px;
-		height: 44px;
+	/* Radio Circle */
+	.radio-circle {
+		width: 22px;
+		height: 22px;
+		border: 2px solid var(--color-text-muted);
+		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 12px;
-		color: white;
 		flex-shrink: 0;
+		transition: border-color 0.15s;
 	}
 
-	.account-icon svg {
-		width: 22px;
-		height: 22px;
+	.radio-circle.checked {
+		border-color: var(--color-primary);
+	}
+
+	.radio-dot {
+		width: 12px;
+		height: 12px;
+		background-color: var(--color-primary);
+		border-radius: 50%;
 	}
 
 	.account-info {
 		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		min-width: 0;
 	}
 
 	.account-name {
-		display: block;
 		font-size: 16px;
 		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
-	.account-details {
-		display: block;
-		font-size: 13px;
-		color: var(--color-text-muted);
-		margin-top: 2px;
+	.currency-tag {
+		padding: 2px 8px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--color-text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+		flex-shrink: 0;
 	}
 
-	.check-icon {
-		width: 24px;
-		height: 24px;
-		color: var(--color-primary);
+	.account-balance {
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--color-success);
 		flex-shrink: 0;
 	}
 

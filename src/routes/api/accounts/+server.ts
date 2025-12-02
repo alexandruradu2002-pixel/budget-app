@@ -12,8 +12,8 @@ export const GET: RequestHandler = async (event) => {
 	const includeInactive = params.getBoolean('includeInactive');
 
 	const sql = includeInactive
-		? 'SELECT * FROM accounts WHERE user_id = ? ORDER BY name ASC'
-		: 'SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY name ASC';
+		? 'SELECT * FROM accounts WHERE user_id = ? ORDER BY type ASC, sort_order ASC, name ASC'
+		: 'SELECT * FROM accounts WHERE user_id = ? AND is_active = 1 ORDER BY type ASC, sort_order ASC, name ASC';
 
 	const result = await db.execute({ sql, args: [user.userId] });
 
@@ -27,6 +27,7 @@ export const GET: RequestHandler = async (event) => {
 		color: row.color,
 		icon: row.icon,
 		is_active: row.is_active === 1,
+		sort_order: row.sort_order ?? 0,
 		created_at: row.created_at,
 		updated_at: row.updated_at
 	}));
@@ -44,6 +45,7 @@ export const POST: RequestHandler = async (event) => {
 	const currency = data.currency ?? 'RON';
 	const color = data.color ?? '#3B82F6';
 	const icon = data.icon ?? null;
+	const notes = data.notes ?? null;
 
 	// Check for duplicate name
 	const existing = await db.execute({
@@ -55,9 +57,9 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const result = await db.execute({
-		sql: `INSERT INTO accounts (user_id, name, type, balance, currency, color, icon)
-			  VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		args: [user.userId, name, type, balance, currency, color, icon]
+		sql: `INSERT INTO accounts (user_id, name, type, balance, currency, color, icon, notes)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, name, type, balance, currency, color, icon, notes]
 	});
 
 	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Account created' });
@@ -115,4 +117,26 @@ export const DELETE: RequestHandler = async (event) => {
 	});
 
 	return successResponse({ message: 'Account deleted' });
+};
+
+// PATCH /api/accounts - Reorder accounts
+export const PATCH: RequestHandler = async (event) => {
+	const user = requireAuth(event);
+	const body = await event.request.json();
+
+	const { accounts } = body as { accounts: { id: number; sort_order: number }[] };
+	
+	if (!accounts || !Array.isArray(accounts)) {
+		throw error(400, 'Accounts array is required');
+	}
+
+	// Update sort_order for each account
+	for (const account of accounts) {
+		await db.execute({
+			sql: 'UPDATE accounts SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [account.sort_order, account.id, user.userId]
+		});
+	}
+
+	return successResponse({ message: 'Accounts reordered' });
 };

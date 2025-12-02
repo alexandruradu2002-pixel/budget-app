@@ -61,6 +61,7 @@ export async function initializeDatabase() {
 			currency TEXT DEFAULT 'RON',
 			color TEXT DEFAULT '#3B82F6',
 			icon TEXT,
+			notes TEXT,
 			is_active BOOLEAN DEFAULT 1,
 			ynab_account_name TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -150,6 +151,18 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// Payees table (stores payees independently from transactions)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS payees (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE(user_id, name)
+		)
+	`);
+
 	// Category Groups table (persists empty groups)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS category_groups (
@@ -163,6 +176,26 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// Learned Locations table (for auto-completing payee/category/account based on location)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS learned_locations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			latitude REAL NOT NULL,
+			longitude REAL NOT NULL,
+			radius INTEGER DEFAULT 50,
+			payee TEXT,
+			category_id INTEGER,
+			account_id INTEGER,
+			times_used INTEGER DEFAULT 1,
+			last_used DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+		)
+	`);
+
 	// Create indexes (only for columns that always exist)
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)');
@@ -173,6 +206,9 @@ export async function initializeDatabase() {
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_user_id ON budget_allocations(user_id)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_budget_allocations_month ON budget_allocations(month)');
 	await db.execute('CREATE INDEX IF NOT EXISTS idx_category_groups_user_id ON category_groups(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_payees_user_id ON payees(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_learned_locations_user_id ON learned_locations(user_id)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_learned_locations_coords ON learned_locations(latitude, longitude)');
 
 	// Migrations: Add missing columns to existing tables
 	// Categories migrations
@@ -200,6 +236,14 @@ export async function initializeDatabase() {
 	try {
 		await db.execute('ALTER TABLE categories ADD COLUMN group_sort_order INTEGER DEFAULT 0');
 		console.log('✅ Added group_sort_order column to categories');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	// Accounts migrations
+	try {
+		await db.execute('ALTER TABLE accounts ADD COLUMN sort_order INTEGER DEFAULT 0');
+		console.log('✅ Added sort_order column to accounts');
 	} catch {
 		// Column already exists, ignore
 	}
@@ -257,6 +301,22 @@ export async function initializeDatabase() {
 		await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_ynab_import ON transactions(ynab_import_id)');
 	} catch {
 		// Index already exists or column missing, ignore
+	}
+
+	// Learned locations migrations
+	try {
+		await db.execute('ALTER TABLE learned_locations ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
+		console.log('✅ Added account_id column to learned_locations');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	// Accounts migrations
+	try {
+		await db.execute('ALTER TABLE accounts ADD COLUMN notes TEXT');
+		console.log('✅ Added notes column to accounts');
+	} catch {
+		// Column already exists, ignore
 	}
 
 	console.log('✅ Database schema initialized');

@@ -1,51 +1,201 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
-	import { LoadingState, PageHeader, HeaderButton } from '$lib/components';
+	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
 	import { formatCurrency } from '$lib/utils/format';
+
+	interface CurrencyTotal {
+		currency: string;
+		symbol: string;
+		amount: number;
+	}
 
 	interface AccountGroup {
 		name: string;
+		icon: string;
 		accounts: Account[];
-		total: number;
+		currencyTotals: CurrencyTotal[];
 	}
+
+	// Exchange rates to RON (approximate, can be updated)
+	const exchangeRates: Record<string, number> = {
+		RON: 1,
+		EUR: 4.97,
+		USD: 4.58,
+		GBP: 5.82,
+		CHF: 5.18,
+		PLN: 1.15,
+		HUF: 0.0125,
+		CZK: 0.20,
+		BGN: 2.54,
+		SEK: 0.43,
+		NOK: 0.42,
+		DKK: 0.67,
+		JPY: 0.030,
+		CNY: 0.63,
+		AUD: 2.98,
+		CAD: 3.28
+	};
+
+	// Currency symbols
+	const currencySymbols: Record<string, string> = {
+		RON: 'lei',
+		EUR: '€',
+		USD: '$',
+		GBP: '£',
+		CHF: 'Fr',
+		PLN: 'zł',
+		HUF: 'Ft',
+		CZK: 'Kč',
+		BGN: 'лв',
+		SEK: 'kr',
+		NOK: 'kr',
+		DKK: 'kr',
+		JPY: '¥',
+		CNY: '¥',
+		AUD: 'A$',
+		CAD: 'C$'
+	};
 
 	let loading = $state(true);
 	let accounts = $state<Account[]>([]);
 	let closedAccounts = $state<Account[]>([]);
 	let showClosedAccounts = $state(false);
+	let showAccountModal = $state(false);
+	let isReorderMode = $state(false);
 
-	// Group accounts by type/category
+	// Helper function to calculate currency totals for a list of accounts
+	function calculateCurrencyTotals(accountList: Account[]): CurrencyTotal[] {
+		const totals: Record<string, number> = {};
+		
+		accountList.forEach(account => {
+			const currency = account.currency || 'RON';
+			totals[currency] = (totals[currency] || 0) + account.balance;
+		});
+		
+		return Object.entries(totals)
+			.map(([currency, amount]) => ({
+				currency,
+				symbol: currencySymbols[currency] || currency,
+				amount
+			}))
+			.sort((a, b) => {
+				// RON first, then alphabetically
+				if (a.currency === 'RON') return -1;
+				if (b.currency === 'RON') return 1;
+				return a.currency.localeCompare(b.currency);
+			});
+	}
+
+	// Group accounts by type - only Cash, Savings, Investing
 	let accountGroups = $derived.by<AccountGroup[]>(() => {
 		const activeAccounts = accounts.filter(a => a.is_active);
 		
-		// Group by type
-		const cashAccounts = activeAccounts.filter(a => a.type === 'cash' || a.type === 'checking');
-		const trackingAccounts = activeAccounts.filter(a => a.type === 'savings' || a.type === 'investment' || a.type === 'credit_card');
+		// Group by the 3 main types and sort by sort_order
+		const cashAccounts = activeAccounts
+			.filter(a => a.type === 'cash' || a.type === 'checking')
+			.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+		const savingsAccounts = activeAccounts
+			.filter(a => a.type === 'savings')
+			.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+		const investingAccounts = activeAccounts
+			.filter(a => a.type === 'investment')
+			.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 		
 		const groups: AccountGroup[] = [];
 		
+		// Only add groups that have accounts
 		if (cashAccounts.length > 0) {
 			groups.push({
 				name: 'Cash',
+				icon: '💵',
 				accounts: cashAccounts,
-				total: cashAccounts.reduce((sum, a) => sum + a.balance, 0)
+				currencyTotals: calculateCurrencyTotals(cashAccounts)
 			});
 		}
 		
-		if (trackingAccounts.length > 0) {
+		if (savingsAccounts.length > 0) {
 			groups.push({
-				name: 'Tracking',
-				accounts: trackingAccounts,
-				total: trackingAccounts.reduce((sum, a) => sum + a.balance, 0)
+				name: 'Savings',
+				icon: '💰',
+				accounts: savingsAccounts,
+				currencyTotals: calculateCurrencyTotals(savingsAccounts)
+			});
+		}
+		
+		if (investingAccounts.length > 0) {
+			groups.push({
+				name: 'Investing',
+				icon: '📈',
+				accounts: investingAccounts,
+				currencyTotals: calculateCurrencyTotals(investingAccounts)
 			});
 		}
 		
 		return groups;
 	});
 
+	// Calculate totals by currency
+	let currencyTotals = $derived.by<CurrencyTotal[]>(() => {
+		const activeAccounts = accounts.filter(a => a.is_active);
+		const totals: Record<string, number> = {};
+		
+		activeAccounts.forEach(account => {
+			const currency = account.currency || 'RON';
+			totals[currency] = (totals[currency] || 0) + account.balance;
+		});
+		
+		return Object.entries(totals)
+			.map(([currency, amount]) => ({
+				currency,
+				symbol: currencySymbols[currency] || currency,
+				amount
+			}))
+			.sort((a, b) => {
+				// RON first, then by amount (converted to RON)
+				if (a.currency === 'RON') return -1;
+				if (b.currency === 'RON') return 1;
+				return (b.amount * (exchangeRates[b.currency] || 1)) - (a.amount * (exchangeRates[a.currency] || 1));
+			});
+	});
+
+	// Calculate total balance in RON (all currencies converted)
+	let totalBalanceRON = $derived.by(() => {
+		const activeAccounts = accounts.filter(a => a.is_active);
+		return activeAccounts.reduce((sum, account) => {
+			const currency = account.currency || 'RON';
+			const rate = exchangeRates[currency] || 1;
+			return sum + (account.balance * rate);
+		}, 0);
+	});
+
+	// Check if we have multiple currencies
+	let hasMultipleCurrencies = $derived(currencyTotals.length > 1);
+
+	// Format amount with currency symbol
+	function formatWithCurrency(amount: number, currency: string): string {
+		const symbol = currencySymbols[currency] || currency;
+		const formatted = amount.toLocaleString('ro-RO', { 
+			minimumFractionDigits: 2, 
+			maximumFractionDigits: 2 
+		});
+		
+		// For currencies with prefix symbols
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `${symbol}${formatted}`;
+		}
+		// For currencies with suffix
+		return `${formatted} ${symbol}`;
+	}
+
+	// Format account balance with its currency
+	function formatAccountBalance(account: Account): string {
+		const currency = account.currency || 'RON';
+		return formatWithCurrency(account.balance, currency);
+	}
+
 	async function loadAccounts() {
 		try {
-			const response = await fetch('/api/accounts');
+			const response = await fetch('/api/accounts?includeInactive=true');
 			if (response.ok) {
 				const data = await response.json();
 				const allAccounts = data.accounts || [];
@@ -62,62 +212,167 @@
 	$effect(() => {
 		loadAccounts();
 	});
+
+	// Move an account up or down within its group
+	async function moveAccount(groupIndex: number, accountIndex: number, direction: 'up' | 'down') {
+		// Get current group accounts directly
+		const group = accountGroups[groupIndex];
+		if (!group) return;
+		
+		const groupAccounts = [...group.accounts];
+		const newIndex = direction === 'up' ? accountIndex - 1 : accountIndex + 1;
+		
+		if (newIndex < 0 || newIndex >= groupAccounts.length) return;
+		
+		// Swap the accounts
+		const temp = groupAccounts[accountIndex];
+		groupAccounts[accountIndex] = groupAccounts[newIndex];
+		groupAccounts[newIndex] = temp;
+		
+		// Create the new order with sort_order values
+		const accountsToUpdate = groupAccounts.map((account, index) => ({
+			id: account.id,
+			sort_order: index
+		}));
+		
+		// Save to database
+		try {
+			const response = await fetch('/api/accounts', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ accounts: accountsToUpdate })
+			});
+			
+			if (response.ok) {
+				// Reload accounts to reflect the new order
+				await loadAccounts();
+			}
+		} catch (error) {
+			console.error('Failed to save account order:', error);
+		}
+	}
 </script>
 
 <div class="accounts-page">
 	<PageHeader title="Accounts">
-		<HeaderButton label="Add account">
-			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-				<circle cx="12" cy="12" r="9"/>
-				<line x1="12" y1="8" x2="12" y2="16"/>
-				<line x1="8" y1="12" x2="16" y2="12"/>
-			</svg>
-		</HeaderButton>
-		<HeaderButton label="More options">
-			<svg fill="currentColor" viewBox="0 0 24 24">
-				<circle cx="12" cy="5" r="1.5"/>
-				<circle cx="12" cy="12" r="1.5"/>
-				<circle cx="12" cy="19" r="1.5"/>
-			</svg>
+		<HeaderButton label={isReorderMode ? "Done" : "Reorder"} onclick={() => isReorderMode = !isReorderMode}>
+			{#if isReorderMode}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+				</svg>
+			{:else}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18" />
+				</svg>
+			{/if}
 		</HeaderButton>
 	</PageHeader>
 
 	{#if loading}
 		<LoadingState message="Loading accounts..." />
 	{:else}
+		<!-- Total Balance Header -->
+		<div class="total-balance-section">
+			<span class="total-label">Total Balance</span>
+			<span class="total-amount">{formatCurrency(totalBalanceRON)}</span>
+			
+			{#if hasMultipleCurrencies}
+				<div class="currency-breakdown">
+					{#each currencyTotals as ct}
+						<span class="currency-item">
+							{formatWithCurrency(ct.amount, ct.currency)}
+						</span>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
 		<!-- Account Groups -->
 		<div class="accounts-content">
-			{#each accountGroups as group}
+			{#each accountGroups as group, groupIndex}
 				<!-- Group Header -->
 				<div class="group-header">
-					<span class="group-name">{group.name}</span>
-					<span class="group-total">{formatCurrency(group.total)}</span>
+					<div class="group-name-row">
+						<span class="group-icon">{group.icon}</span>
+						<span class="group-name">{group.name}</span>
+					</div>
+					<div class="group-totals">
+						{#each group.currencyTotals as ct}
+							<span class="group-total-item">{formatWithCurrency(ct.amount, ct.currency)}</span>
+						{/each}
+					</div>
 				</div>
 				
 				<!-- Accounts in Group -->
 				<div class="accounts-group">
 					{#each group.accounts as account, index (account.id)}
-						<a href="/accounts/{account.id}" class="account-row" class:has-border={index > 0}>
-							<div class="account-info">
-								<div class="account-indicator"></div>
-								<span class="account-name">{account.name}</span>
+						{#if isReorderMode}
+							<div class="account-row reorder-row" class:has-border={index > 0}>
+								<div class="account-info">
+									<span class="account-name">{account.name}</span>
+									{#if account.currency && account.currency !== 'RON'}
+										<span class="account-currency">{account.currency}</span>
+									{/if}
+								</div>
+								<div class="reorder-arrows">
+									<button 
+										class="reorder-arrow" 
+										disabled={index === 0}
+										onclick={() => moveAccount(groupIndex, index, 'up')}
+										aria-label="Move up"
+									>
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+										</svg>
+									</button>
+									<button 
+										class="reorder-arrow" 
+										disabled={index === group.accounts.length - 1}
+										onclick={() => moveAccount(groupIndex, index, 'down')}
+										aria-label="Move down"
+									>
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+										</svg>
+									</button>
+								</div>
 							</div>
-							<span class="account-balance">{formatCurrency(account.balance)}</span>
-						</a>
+						{:else}
+							<a href="/accounts/{account.id}" class="account-row" class:has-border={index > 0}>
+								<div class="account-info">
+									<span class="account-name">{account.name}</span>
+									{#if account.currency && account.currency !== 'RON'}
+										<span class="account-currency">{account.currency}</span>
+									{/if}
+								</div>
+								<span class="account-balance" class:negative={account.balance < 0}>
+									{formatAccountBalance(account)}
+								</span>
+							</a>
+						{/if}
 					{/each}
 				</div>
 			{/each}
 
+			<!-- Empty State -->
+			{#if accountGroups.length === 0}
+				<div class="empty-state">
+					<span class="empty-icon">🏦</span>
+					<p class="empty-text">No accounts yet</p>
+					<p class="empty-subtext">Add your first account to get started</p>
+				</div>
+			{/if}
+
 			<!-- Closed Accounts Section -->
 			{#if closedAccounts.length > 0}
 				<!-- Closed Header -->
-				<div class="group-header">
+				<div class="group-header closed-header">
 					<span class="group-name">Closed</span>
 				</div>
 				
 				<div class="accounts-group">
 					<button onclick={() => showClosedAccounts = !showClosedAccounts} class="closed-toggle">
-						<span>{closedAccounts.length} closed accounts</span>
+						<span>{closedAccounts.length} closed account{closedAccounts.length > 1 ? 's' : ''}</span>
 						<svg class="chevron-icon" class:rotated={showClosedAccounts} fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 						</svg>
@@ -127,7 +382,6 @@
 						{#each closedAccounts as account (account.id)}
 							<div class="account-row closed has-border">
 								<div class="account-info">
-									<div class="account-indicator muted"></div>
 									<span class="account-name muted">{account.name}</span>
 								</div>
 								<span class="account-balance muted">{formatCurrency(account.balance)}</span>
@@ -140,7 +394,7 @@
 
 		<!-- Bottom Actions -->
 		<div class="bottom-actions">
-			<button class="action-button primary">
+			<button class="action-button primary" onclick={() => showAccountModal = true}>
 				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 					<circle cx="12" cy="12" r="9"/>
 					<line x1="12" y1="8" x2="12" y2="16"/>
@@ -148,16 +402,15 @@
 				</svg>
 				Add Account
 			</button>
-			
-			<button class="action-button">
-				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-					<path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
-				</svg>
-				Manage Bank Connections
-			</button>
 		</div>
 	{/if}
 </div>
+
+<!-- Account Modal -->
+<AccountModal 
+	bind:show={showAccountModal}
+	onSave={loadAccounts}
+/>
 
 <style>
 	.accounts-page {
@@ -165,6 +418,45 @@
 		flex-direction: column;
 		min-height: calc(100vh - 70px);
 		min-height: calc(100dvh - 70px);
+	}
+
+	/* Total Balance Section */
+	.total-balance-section {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 24px 16px;
+		background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+		margin: 0 16px 16px;
+		border-radius: 16px;
+	}
+
+	.total-label {
+		font-size: 13px;
+		color: rgba(255, 255, 255, 0.8);
+		margin-bottom: 4px;
+	}
+
+	.total-amount {
+		font-size: 28px;
+		font-weight: 700;
+		color: white;
+	}
+
+	.currency-breakdown {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 8px 16px;
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid rgba(255, 255, 255, 0.2);
+	}
+
+	.currency-item {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.9);
+		font-weight: 500;
 	}
 
 	/* Content */
@@ -178,18 +470,84 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 8px 4px;
+		padding: 12px 4px 8px;
 		margin-top: 8px;
 	}
 
-	.group-name {
-		font-size: 13px;
-		color: var(--color-text-muted);
+	.group-header:first-child {
+		margin-top: 0;
 	}
 
-	.group-total {
-		font-size: 13px;
+	.group-header.closed-header {
+		margin-top: 16px;
+	}
+
+	.group-name-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.group-icon {
+		font-size: 16px;
+	}
+
+	.group-name {
+		font-size: 14px;
+		font-weight: 600;
 		color: var(--color-text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.group-totals {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+	}
+
+	.group-total-item {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	/* Reorder Arrows */
+	.reorder-arrows {
+		display: flex;
+		gap: 8px;
+	}
+
+	.reorder-arrow {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		background-color: var(--color-bg-secondary);
+		border: none;
+		border-radius: 8px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+	}
+
+	.reorder-arrow:active {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.reorder-arrow:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+
+	.reorder-arrow svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.reorder-row {
+		cursor: default;
 	}
 
 	/* Accounts Group */
@@ -204,7 +562,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 14px 16px 14px 0;
+		padding: 14px 16px;
 		text-decoration: none;
 		min-height: 52px;
 	}
@@ -224,22 +582,11 @@
 	.account-info {
 		display: flex;
 		align-items: center;
-	}
-
-	.account-indicator {
-		width: 4px;
-		height: 32px;
-		background-color: var(--color-success);
-		border-radius: 0 4px 4px 0;
-		margin-right: 12px;
-	}
-
-	.account-indicator.muted {
-		background-color: var(--color-text-muted);
+		gap: 8px;
 	}
 
 	.account-name {
-		font-size: 15px;
+		font-size: 16px;
 		color: var(--color-text-primary);
 	}
 
@@ -247,13 +594,55 @@
 		color: var(--color-text-muted);
 	}
 
+	.account-currency {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		background-color: var(--color-bg-tertiary);
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+
 	.account-balance {
-		font-size: 15px;
+		font-size: 16px;
+		font-weight: 500;
 		color: var(--color-success);
+	}
+
+	.account-balance.negative {
+		color: var(--color-danger);
 	}
 
 	.account-balance.muted {
 		color: var(--color-text-muted);
+		font-weight: 400;
+	}
+
+	/* Empty State */
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 48px 24px;
+		text-align: center;
+	}
+
+	.empty-icon {
+		font-size: 48px;
+		margin-bottom: 16px;
+	}
+
+	.empty-text {
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin: 0 0 8px;
+	}
+
+	.empty-subtext {
+		font-size: 14px;
+		color: var(--color-text-muted);
+		margin: 0;
 	}
 
 	/* Closed Toggle */
@@ -266,7 +655,7 @@
 		background: none;
 		border: none;
 		text-align: left;
-		color: var(--color-text-primary);
+		color: var(--color-text-muted);
 		font-size: 15px;
 	}
 
@@ -304,7 +693,7 @@
 		border: none;
 		border-radius: 12px;
 		color: var(--color-primary);
-		font-size: 15px;
+		font-size: 16px;
 		font-weight: 500;
 		min-height: 52px;
 	}

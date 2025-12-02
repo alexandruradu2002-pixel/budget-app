@@ -34,6 +34,7 @@ export interface Account {
 	color: string; // Hex color for UI
 	icon?: string; // Icon name
 	is_active: boolean;
+	sort_order?: number; // For custom ordering
 	ynab_account_name?: string; // Original YNAB account name
 	created_at: string;
 	updated_at: string;
@@ -169,4 +170,35 @@ export interface BudgetAllocation {
 	// Joined data
 	category_name?: string;
 	category_group?: string;
+}
+
+// ---- Learned Locations (for auto-completing payee/category/account) ----
+export interface LearnedLocation {
+	id: number;
+	user_id: number;
+	latitude: number;
+	longitude: number;
+	radius: number; // meters
+	payee?: string;
+	category_id?: number;
+	account_id?: number;
+	times_used: number;
+	last_used: string;
+	created_at: string;
+
+	// Joined data
+	category_name?: string;
+	category_color?: string;
+	account_name?: string;
+}
+
+export interface LocationSuggestion {
+	payee?: string;
+	category_id?: number;
+	category_name?: string;
+	category_color?: string;
+	account_id?: number;
+	account_name?: string;
+	confidence: number; // 0-1, based on times_used and distance
+	distance: number; // meters from current location
 }

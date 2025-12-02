@@ -2,34 +2,76 @@
  * Formatting utilities for the budget app
  */
 
+import { CURRENCY_SYMBOLS, type CurrencyValue } from '$lib/constants';
+import { currencyStore } from '$lib/stores';
+
 /**
- * Format a number as Romanian currency (lei)
+ * Format a number as currency using the main currency from store
  */
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number, currency?: CurrencyValue): string {
+	const curr = currency || currencyStore.value;
+	const symbol = CURRENCY_SYMBOLS[curr];
+	
+	// For EUR, USD, GBP put symbol before amount
+	if (curr !== 'RON') {
+		return symbol + amount.toLocaleString('ro-RO', { 
+			minimumFractionDigits: 2, 
+			maximumFractionDigits: 2 
+		});
+	}
+	
+	// For RON (lei), put symbol after amount
 	return amount.toLocaleString('ro-RO', { 
 		minimumFractionDigits: 2, 
 		maximumFractionDigits: 2 
-	}) + ' lei';
+	}) + ' ' + symbol;
 }
 
 /**
  * Format a number as currency with sign (+ or -)
  */
-export function formatCurrencyWithSign(amount: number): string {
+export function formatCurrencyWithSign(amount: number, currency?: CurrencyValue): string {
+	const curr = currency || currencyStore.value;
+	const symbol = CURRENCY_SYMBOLS[curr];
 	const formatted = Math.abs(amount).toLocaleString('ro-RO', { 
 		minimumFractionDigits: 2, 
 		maximumFractionDigits: 2 
 	});
 	const sign = amount >= 0 ? '+' : '-';
-	return `${sign}${formatted} lei`;
+	
+	// For EUR, USD, GBP put symbol before amount
+	if (curr !== 'RON') {
+		return `${sign}${symbol}${formatted}`;
+	}
+	
+	// For RON (lei), put symbol after amount
+	return `${sign}${formatted} ${symbol}`;
 }
 
 /**
  * Format amount for transactions (negative amounts show as positive with minus)
  */
-export function formatAmount(amount: number): string {
+export function formatAmount(amount: number, currency?: CurrencyValue): string {
+	const curr = currency || currencyStore.value;
+	const symbol = CURRENCY_SYMBOLS[curr];
 	const formatted = Math.abs(amount).toFixed(2);
-	return `${amount < 0 ? '-' : ''}${formatted} lei`;
+	const sign = amount < 0 ? '-' : '';
+	
+	// For EUR, USD, GBP put symbol before amount
+	if (curr !== 'RON') {
+		return `${sign}${symbol}${formatted}`;
+	}
+	
+	// For RON (lei), put symbol after amount
+	return `${sign}${formatted} ${symbol}`;
+}
+
+/**
+ * Convert amount from source currency to main currency and format
+ */
+export function formatConvertedCurrency(amount: number, fromCurrency: CurrencyValue): string {
+	const converted = currencyStore.convert(amount, fromCurrency);
+	return formatCurrency(converted);
 }
 
 /**

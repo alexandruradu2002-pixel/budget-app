@@ -1,25 +1,52 @@
 <script lang="ts">
 	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
+	import type { CurrencyValue } from '$lib/constants';
 	import TransactionModal from '$lib/components/TransactionModal.svelte';
 	import { LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
+	import { currencyStore } from '$lib/stores';
+
+	// Initialize currency store from localStorage
+	$effect(() => {
+		currencyStore.init();
+	});
 
 	// Current month state
 	let currentDate = $state(new Date());
 	let showMonthPicker = $state(false);
+	let pickerYear = $state(new Date().getFullYear());
 
-	// Generate available months (last 12 months + next 12 months)
-	let availableMonths = $derived.by(() => {
-		const months: Date[] = [];
-		const now = new Date();
-		
-		// Start from 12 months ago
-		for (let i = -12; i <= 12; i++) {
-			const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
-			months.push(date);
+	// Months with transactions (year-month format: "2025-01")
+	let monthsWithTransactions = $state<Set<string>>(new Set());
+
+	// Month names for the calendar grid
+	const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+	// Load months that have transactions
+	async function loadMonthsWithTransactions() {
+		try {
+			// Fetch all transactions to determine which months have data
+			const res = await fetch('/api/transactions?limit=10000');
+			if (res.ok) {
+				const data = await res.json();
+				const months = new Set<string>();
+				for (const t of data.transactions || []) {
+					const date = new Date(t.date);
+					const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+					months.add(key);
+				}
+				monthsWithTransactions = months;
+			}
+		} catch (e) {
+			console.error('Failed to load months with transactions:', e);
 		}
-		return months;
-	});
+	}
+
+	// Check if a month has transactions
+	function hasTransactions(year: number, month: number): boolean {
+		const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+		return monthsWithTransactions.has(key);
+	}
 
 	// Transaction modal state
 	let showTransactionModal = $state(false);
@@ -36,13 +63,25 @@
 	// Transactions for the current month
 	let transactions = $state<Transaction[]>([]);
 
-	// Calculate spent per category (sum of negative transactions, shown as positive)
+	// Map of account_id to currency for conversion
+	let accountCurrencies = $state<Map<number, CurrencyValue>>(new Map());
+
+	// Calculate total spent per category (converting to main currency)
+	// Track currencyStore.value to re-compute when main currency changes
 	let spentByCategory = $derived.by(() => {
+		// Access currencyStore.value to create reactivity dependency
+		const _ = currencyStore.value;
+		
 		const spent = new Map<number, number>();
 		for (const t of transactions) {
-			if (t.amount < 0 && t.category_id) {
+			if (t.category_id) {
+				// Get the currency of the transaction's account
+				const accountCurrency = accountCurrencies.get(t.account_id) || 'RON';
+				// Convert to main currency
+				const convertedAmount = currencyStore.convert(t.amount, accountCurrency);
+				
 				const current = spent.get(t.category_id) || 0;
-				spent.set(t.category_id, current + Math.abs(t.amount));
+				spent.set(t.category_id, current + convertedAmount);
 			}
 		}
 		return spent;
@@ -60,10 +99,11 @@
 			const lastDay = new Date(year, month + 1, 0).getDate();
 			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-			// Fetch categories and transactions in parallel
-			const [catRes, transRes] = await Promise.all([
+			// Fetch categories, transactions, and accounts in parallel
+			const [catRes, transRes, accountsRes] = await Promise.all([
 				fetch('/api/categories'),
-				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`)
+				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
+				fetch('/api/accounts')
 			]);
 
 			if (!catRes.ok) throw new Error('Failed to load categories');
@@ -74,6 +114,17 @@
 			if (transRes.ok) {
 				const transData = await transRes.json();
 				transactions = transData.transactions || [];
+			}
+			
+			// Build account currency map
+			if (accountsRes.ok) {
+				const accountsData = await accountsRes.json();
+				accounts = accountsData.accounts || [];
+				const currencyMap = new Map<number, CurrencyValue>();
+				for (const acc of accounts) {
+					currencyMap.set(acc.id, (acc.currency as CurrencyValue) || 'RON');
+				}
+				accountCurrencies = currencyMap;
 			}
 			
 			// Group categories by group_name
@@ -173,17 +224,30 @@
 
 	// Month navigation functions
 	function toggleMonthPicker() {
+		if (!showMonthPicker) {
+			// Reset picker year to current selected year when opening
+			pickerYear = currentDate.getFullYear();
+			loadMonthsWithTransactions();
+		}
 		showMonthPicker = !showMonthPicker;
 	}
 
-	function selectMonth(date: Date) {
-		currentDate = date;
+	function selectMonth(month: number) {
+		currentDate = new Date(pickerYear, month, 1);
 		showMonthPicker = false;
 	}
 
-	function isCurrentMonth(date: Date): boolean {
-		return date.getFullYear() === currentDate.getFullYear() && 
-			   date.getMonth() === currentDate.getMonth();
+	function isSelectedMonth(month: number): boolean {
+		return currentDate.getFullYear() === pickerYear && 
+			   currentDate.getMonth() === month;
+	}
+
+	function prevYear() {
+		pickerYear = pickerYear - 1;
+	}
+
+	function nextYear() {
+		pickerYear = pickerYear + 1;
 	}
 
 	// Reload data when month changes
@@ -209,21 +273,27 @@
 		<button class="month-picker-overlay" onclick={toggleMonthPicker} aria-label="Close month picker"></button>
 		<div class="month-picker">
 			<div class="month-picker-header">
-				<span>Select Month</span>
-				<button class="close-picker" onclick={toggleMonthPicker} aria-label="Close">
-					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				<button class="year-nav" onclick={prevYear} aria-label="Previous year">
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+					</svg>
+				</button>
+				<span class="picker-year">{pickerYear}</span>
+				<button class="year-nav" onclick={nextYear} aria-label="Next year">
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
 				</button>
 			</div>
-			<div class="month-list">
-				{#each availableMonths as month (month.getTime())}
+			<div class="month-grid">
+				{#each monthNames as name, index}
 					<button 
-						class="month-option" 
-						class:selected={isCurrentMonth(month)}
-						onclick={() => selectMonth(month)}
+						class="month-cell" 
+						class:selected={isSelectedMonth(index)}
+						class:has-data={hasTransactions(pickerYear, index)}
+						onclick={() => selectMonth(index)}
 					>
-						{formatMonthYear(month)}
+						{name}
 					</button>
 				{/each}
 			</div>
@@ -245,6 +315,11 @@
 				<p class="empty-hint">Import from YNAB or create categories in Settings</p>
 			</div>
 		{:else}
+			<!-- Sticky Column Header -->
+			<div class="column-header-sticky">
+				<span class="column-header-label">Total Spent</span>
+			</div>
+
 			{#each categoryGroups as group (group.id)}
 				<!-- Group Header -->
 				<button onclick={() => toggleGroup(group.id)} class="group-header">
@@ -291,6 +366,29 @@
 		flex-direction: column;
 		height: calc(100vh - 70px);
 		height: calc(100dvh - 70px);
+	}
+
+	/* Sticky Column Header */
+	.column-header-sticky {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		display: flex;
+		justify-content: flex-end;
+		padding: 10px 16px;
+		background-color: var(--color-bg-primary);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	/* Column Header Label */
+	.column-header-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		min-width: 65px;
+		text-align: center;
 	}
 
 	/* Categories List */
@@ -370,7 +468,7 @@
 		padding: 4px 10px;
 		border-radius: 8px;
 		font-size: 12px;
-		font-weight: 500;
+		font-weight: 600;
 		min-width: 65px;
 		text-align: center;
 		background-color: var(--color-bg-tertiary);
@@ -435,14 +533,11 @@
 		top: 60px;
 		left: 16px;
 		right: 16px;
-		max-width: 400px;
-		max-height: 60vh;
+		max-width: 320px;
 		background-color: var(--color-bg-secondary);
 		border-radius: 12px;
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 		z-index: 101;
-		display: flex;
-		flex-direction: column;
 		overflow: hidden;
 	}
 
@@ -452,49 +547,62 @@
 		justify-content: space-between;
 		padding: 16px;
 		border-bottom: 1px solid var(--color-border);
+	}
+
+	.picker-year {
+		font-size: 18px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
 
-	.close-picker {
+	.year-nav {
 		background: none;
 		border: none;
-		padding: 4px;
+		padding: 8px;
 		cursor: pointer;
 		color: var(--color-text-muted);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-	}
-
-	.close-picker:hover {
-		color: var(--color-text-primary);
-	}
-
-	.month-list {
-		overflow-y: auto;
-		padding: 8px;
-	}
-
-	.month-option {
-		display: block;
-		width: 100%;
-		padding: 12px 16px;
-		background: none;
-		border: none;
 		border-radius: 8px;
-		text-align: left;
-		font-size: 15px;
-		color: var(--color-text-primary);
-		cursor: pointer;
+		min-width: 44px;
 		min-height: 44px;
 	}
 
-	.month-option:hover {
+	.year-nav:hover {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+	}
+
+	.month-grid {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 8px;
+		padding: 16px;
+	}
+
+	.month-cell {
+		padding: 12px 8px;
+		background: none;
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		min-height: 44px;
+		transition: all 0.15s ease;
+	}
+
+	.month-cell.has-data {
+		color: var(--color-text-primary);
+	}
+
+	.month-cell:hover {
 		background-color: var(--color-bg-tertiary);
 	}
 
-	.month-option.selected {
+	.month-cell.selected {
 		background-color: var(--color-primary);
 		color: white;
 		font-weight: 600;

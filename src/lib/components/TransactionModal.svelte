@@ -1,8 +1,35 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
+	import { 
+		isGeolocationSupported, 
+		getCurrentPosition, 
+		getLocationSuggestions, 
+		saveLearnedLocation,
+		type GeolocationPosition 
+	} from '$lib/utils/geolocation';
 	import PayeeSelector from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
+
+	// Currency symbols map
+	const currencySymbols: Record<string, string> = {
+		RON: 'lei',
+		EUR: '€',
+		USD: '$',
+		GBP: '£',
+		CHF: 'Fr',
+		PLN: 'zł',
+		HUF: 'Ft',
+		CZK: 'Kč',
+		BGN: 'лв',
+		SEK: 'kr',
+		NOK: 'kr',
+		DKK: 'kr',
+		JPY: '¥',
+		CNY: '¥',
+		AUD: 'A$',
+		CAD: 'C$'
+	};
 
 	// Props
 	let {
@@ -10,6 +37,7 @@
 		editingTransaction = null as Transaction | null,
 		accounts = [] as Account[],
 		categories = [] as Category[],
+		defaultAccountId = undefined as number | undefined,
 		onSave = async () => {},
 		onDelete = async (id: number) => {},
 		onClose = () => {}
@@ -52,9 +80,71 @@
 	let selectedCategoryName = $state('');
 	let selectedAccountName = $state('');
 
+	// Location-based auto-complete state
+	let currentPosition = $state<GeolocationPosition | null>(null);
+	let locationStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
+	let appliedLocationSuggestion = $state(false);
+
+	// Delete confirmation dialog state
+	let showDeleteConfirm = $state(false);
+
+	// Fetch location and auto-complete when modal opens for new transaction
+	async function fetchLocationAndAutoComplete() {
+		if (!isGeolocationSupported()) {
+			locationStatus = 'error';
+			return;
+		}
+
+		locationStatus = 'loading';
+		
+		const posResult = await getCurrentPosition();
+		if (!posResult.success) {
+			locationStatus = 'error';
+			return;
+		}
+
+		currentPosition = posResult.position;
+		
+		const suggestions = await getLocationSuggestions(
+			posResult.position.latitude,
+			posResult.position.longitude
+		);
+
+		locationStatus = 'success';
+
+		// Auto-apply best suggestion immediately if there's any match
+		if (suggestions.length > 0 && !appliedLocationSuggestion) {
+			const best = suggestions[0];
+			
+			// Apply payee
+			if (best.payee) {
+				formData.description = best.payee;
+			}
+			
+			// Apply category
+			if (best.category_id) {
+				formData.category_id = best.category_id;
+				selectedCategoryName = best.category_name || '';
+			}
+			
+			// Apply account
+			if (best.account_id) {
+				formData.account_id = best.account_id;
+				selectedAccountName = best.account_name || '';
+			}
+			
+			appliedLocationSuggestion = true;
+		}
+	}
+
 	// Initialize form when modal opens or editingTransaction changes
 	$effect(() => {
 		if (show) {
+			// Reset location state
+			locationStatus = 'idle';
+			appliedLocationSuggestion = false;
+			currentPosition = null;
+
 			if (editingTransaction) {
 				const amount = Math.abs(editingTransaction.amount);
 				formData = {
@@ -77,11 +167,15 @@
 				const acc = accounts.find(a => a.id === editingTransaction.account_id);
 				selectedAccountName = acc?.name || '';
 			} else {
+				// Determine the initial account: use defaultAccountId if provided, otherwise first account
+				const initialAccountId = defaultAccountId ?? accounts[0]?.id ?? 0;
+				const initialAccount = accounts.find(a => a.id === initialAccountId);
+				
 				formData = {
 					description: '',
 					amount: '0.00',
 					date: new Date().toISOString().split('T')[0],
-					account_id: accounts[0]?.id || 0,
+					account_id: initialAccountId,
 					category_id: categories[0]?.id || 0,
 					notes: '',
 					isInflow: false,
@@ -93,7 +187,10 @@
 				isNewInput = true;
 				// Set default display names
 				selectedCategoryName = categories[0]?.name || '';
-				selectedAccountName = accounts[0]?.name || '';
+				selectedAccountName = initialAccount?.name || accounts[0]?.name || '';
+
+				// Fetch location and auto-complete for new transactions
+				fetchLocationAndAutoComplete();
 			}
 		}
 	});
@@ -157,11 +254,25 @@
 		formData.amount = num.toFixed(2);
 	}
 
-	// Formatted display amount with sign
+	// Get current account's currency symbol
+	let selectedAccountCurrency = $derived(() => {
+		const account = accounts.find(a => a.id === formData.account_id);
+		const currency = account?.currency || 'RON';
+		return currencySymbols[currency] || currency;
+	});
+
+	// Formatted display amount with sign and account currency
 	let displayAmount = $derived(() => {
 		const num = parseFloat(formData.amount) || 0;
 		const sign = formData.isInflow ? '+' : '−';
-		return `${sign}${num.toFixed(2)}lei`;
+		const symbol = selectedAccountCurrency();
+		const formatted = num.toFixed(2);
+		
+		// Position symbol based on currency type
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `${sign}${symbol}${formatted}`;
+		}
+		return `${sign}${formatted}${symbol}`;
 	});
 
 	// Handle payee selection
@@ -307,14 +418,37 @@
 
 		console.log('Saving transaction with payload:', payload);
 		await onSave(payload);
+
+		// Save learned location if we have position data (for new transactions only)
+		if (!editingTransaction && currentPosition && (formData.description || formData.category_id || formData.account_id)) {
+			saveLearnedLocation({
+				latitude: currentPosition.latitude,
+				longitude: currentPosition.longitude,
+				payee: formData.description || undefined,
+				category_id: formData.category_id && formData.category_id > 0 ? formData.category_id : undefined,
+				account_id: formData.account_id && formData.account_id > 0 ? formData.account_id : undefined
+			}).catch(err => {
+				// Silent fail - location learning is not critical
+				console.warn('Failed to save learned location:', err);
+			});
+		}
+
 		closeModal();
 	}
 
 	// Delete transaction
-	async function handleDelete() {
+	function openDeleteConfirm() {
 		if (!editingTransaction) return;
-		if (!confirm('Sigur vrei să ștergi această tranzacție?')) return;
-		
+		showDeleteConfirm = true;
+	}
+
+	function closeDeleteConfirm() {
+		showDeleteConfirm = false;
+	}
+
+	async function confirmDelete() {
+		if (!editingTransaction) return;
+		showDeleteConfirm = false;
 		await onDelete(editingTransaction.id);
 		closeModal();
 	}
@@ -340,6 +474,23 @@
 			</h2>
 			<div class="header-spacer"></div>
 		</header>
+
+		<!-- Location-based auto-complete banner -->
+		{#if !editingTransaction && locationStatus === 'loading'}
+			<div class="location-banner loading">
+				<svg class="location-icon spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				</svg>
+				<span>Detectare locație...</span>
+			</div>
+		{:else if !editingTransaction && appliedLocationSuggestion}
+			<div class="location-banner applied">
+				<svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+				</svg>
+				<span>Completat automat din locație</span>
+			</div>
+		{/if}
 
 		<!-- Scrollable Content -->
 		<div class="modal-content">
@@ -370,7 +521,7 @@
 			<!-- Amount Display -->
 			<button type="button" class="amount-display" onclick={() => showCalculator = true}>
 				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
-					{formData.isInflow ? '+' : '−'}{formData.amount}lei
+					{displayAmount()}
 				</span>
 			</button>
 
@@ -487,7 +638,7 @@
 			<!-- Action Buttons -->
 			<div class="action-buttons">
 				{#if editingTransaction}
-					<button type="button" onclick={handleDelete} class="btn-delete">
+					<button type="button" onclick={openDeleteConfirm} class="btn-delete">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 						</svg>
@@ -609,6 +760,29 @@
 	selectedAccountId={formData.account_id}
 	onSelect={handleAccountSelect}
 />
+
+<!-- Delete Confirmation Dialog -->
+{#if showDeleteConfirm}
+	<div class="delete-confirm-overlay" onclick={closeDeleteConfirm} role="presentation">
+		<div class="delete-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+			<div class="delete-confirm-icon">
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+				</svg>
+			</div>
+			<h3 id="delete-confirm-title" class="delete-confirm-title">Șterge tranzacția?</h3>
+			<p class="delete-confirm-message">Această acțiune nu poate fi anulată. Tranzacția va fi ștearsă definitiv.</p>
+			<div class="delete-confirm-actions">
+				<button type="button" onclick={closeDeleteConfirm} class="delete-confirm-cancel">
+					Anulează
+				</button>
+				<button type="button" onclick={confirmDelete} class="delete-confirm-delete">
+					Șterge
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.modal-overlay {
@@ -1127,5 +1301,150 @@
 
 	.day-btn.selected.today {
 		border-color: var(--color-primary);
+	}
+
+	/* Location-based auto-complete */
+	.location-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 16px;
+		font-size: 13px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.location-banner.loading {
+		background-color: var(--color-bg-secondary);
+		color: var(--color-text-muted);
+	}
+
+	.location-banner.applied {
+		background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
+		color: var(--color-success);
+	}
+
+	.location-icon {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+	}
+
+	.location-icon.spin {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	/* Delete Confirmation Dialog */
+	.delete-confirm-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 300;
+		background-color: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 24px;
+		backdrop-filter: blur(4px);
+		animation: fadeIn 0.15s ease-out;
+	}
+
+	@keyframes fadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	.delete-confirm-dialog {
+		background-color: var(--color-bg-secondary);
+		border-radius: 20px;
+		padding: 24px;
+		max-width: 320px;
+		width: 100%;
+		text-align: center;
+		animation: slideUp 0.2s ease-out;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+	}
+
+	@keyframes slideUp {
+		from {
+			opacity: 0;
+			transform: translateY(20px) scale(0.95);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+
+	.delete-confirm-icon {
+		width: 56px;
+		height: 56px;
+		margin: 0 auto 16px;
+		background-color: rgba(239, 68, 68, 0.15);
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.delete-confirm-icon svg {
+		width: 28px;
+		height: 28px;
+		color: var(--color-danger);
+	}
+
+	.delete-confirm-title {
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin: 0 0 8px;
+	}
+
+	.delete-confirm-message {
+		font-size: 14px;
+		color: var(--color-text-muted);
+		margin: 0 0 24px;
+		line-height: 1.5;
+	}
+
+	.delete-confirm-actions {
+		display: flex;
+		gap: 12px;
+	}
+
+	.delete-confirm-cancel,
+	.delete-confirm-delete {
+		flex: 1;
+		padding: 14px 20px;
+		border: none;
+		border-radius: 14px;
+		font-size: 15px;
+		font-weight: 600;
+		min-height: 48px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.delete-confirm-cancel {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+	}
+
+	.delete-confirm-cancel:active {
+		background-color: var(--color-border);
+		transform: scale(0.98);
+	}
+
+	.delete-confirm-delete {
+		background-color: var(--color-danger);
+		color: white;
+	}
+
+	.delete-confirm-delete:active {
+		background-color: #dc2626;
+		transform: scale(0.98);
 	}
 </style>

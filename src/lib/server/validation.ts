@@ -24,6 +24,7 @@ export const accountSchema = z.object({
 	currency: z.string().default('RON'),
 	color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').default('#3B82F6'),
 	icon: z.string().optional(),
+	notes: z.string().optional().nullable(),
 	ynab_account_name: z.string().optional()
 });
 
@@ -78,4 +79,21 @@ export const budgetAllocationSchema = z.object({
 	assigned: z.number().default(0),
 	activity: z.number().default(0),
 	available: z.number().default(0)
+});
+
+// ============================================
+// Location Validation (for auto-complete)
+// ============================================
+export const locationSuggestSchema = z.object({
+	latitude: z.number().min(-90).max(90),
+	longitude: z.number().min(-180).max(180)
+});
+
+export const learnedLocationSchema = z.object({
+	latitude: z.number().min(-90).max(90),
+	longitude: z.number().min(-180).max(180),
+	radius: z.number().int().positive().default(50),
+	payee: z.string().optional(),
+	category_id: z.number().int().positive().optional(),
+	account_id: z.number().int().positive().optional()
 });

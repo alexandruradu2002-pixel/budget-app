@@ -1,5 +1,14 @@
 <script lang="ts">
 	import type { Category } from '$lib/types';
+	import { formatCurrency } from '$lib/utils/format';
+
+	// Extended category type with balance from API
+	interface CategoryWithBalance extends Category {
+		balance?: number;
+		available?: number;
+		budgeted?: number;
+		activity?: number;
+	}
 
 	// Props
 	let {
@@ -11,11 +20,16 @@
 
 	// State
 	let searchQuery = $state('');
-	let categories = $state<Category[]>([]);
+	let categories = $state<CategoryWithBalance[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 
-	// Group categories by group_name
+	// Get the selected category
+	let selectedCategory = $derived(() => {
+		return categories.find(c => c.id === selectedCategoryId);
+	});
+
+	// Group categories by group_name (excluding selected)
 	let groupedCategories = $derived(() => {
 		const filtered = searchQuery
 			? categories.filter(c => 
@@ -24,9 +38,12 @@
 			)
 			: categories;
 
-		const groups: Record<string, Category[]> = {};
+		const groups: Record<string, CategoryWithBalance[]> = {};
 		
 		for (const cat of filtered) {
+			// Skip selected category in the main list
+			if (cat.id === selectedCategoryId) continue;
+			
 			const groupName = cat.group_name || 'Other';
 			if (!groups[groupName]) {
 				groups[groupName] = [];
@@ -66,6 +83,13 @@
 		closeModal();
 	}
 
+	function selectNoCategory() {
+		// Use -1 or 0 to indicate no category (account transfer only)
+		selectedCategoryId = -1;
+		onSelect({ id: -1, name: 'Account Transfer' } as Category);
+		closeModal();
+	}
+
 	function closeModal() {
 		show = false;
 		searchQuery = '';
@@ -90,30 +114,18 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</button>
-			<h2 class="modal-title">Select Category</h2>
+			<h2 class="modal-title">Category</h2>
 			<div class="header-spacer"></div>
 		</header>
 
 		<!-- Search Input -->
 		<div class="search-container">
-			<div class="search-input-wrapper">
-				<svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-				</svg>
-				<input
-					type="text"
-					bind:value={searchQuery}
-					placeholder="Search categories..."
-					class="search-input"
-				/>
-				{#if searchQuery}
-					<button aria-label="Clear search" onclick={() => searchQuery = ''} class="clear-btn">
-						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				{/if}
-			</div>
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search Categories"
+				class="search-input"
+			/>
 		</div>
 
 		<!-- Content -->
@@ -128,7 +140,7 @@
 					<p>{error}</p>
 					<button onclick={() => loadCategories()} class="retry-btn">Try Again</button>
 				</div>
-			{:else if Object.keys(groupedCategories()).length === 0}
+			{:else if Object.keys(groupedCategories()).length === 0 && !selectedCategory()}
 				<div class="empty-state">
 					<svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 						<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -139,34 +151,54 @@
 					</p>
 				</div>
 			{:else}
-				<!-- Categories List grouped by group_name -->
 				<div class="categories-list">
-					{#each Object.entries(groupedCategories()) as [groupName, groupCategories] (groupName)}
-						<div class="category-group">
-							<div class="group-header">
-								<span class="group-name">{groupName}</span>
-							</div>
-							{#each groupCategories as category (category.id)}
-								<button 
-									class="category-item"
-									class:selected={selectedCategoryId === category.id}
-									onclick={() => selectCategory(category)}
-								>
-									<div class="category-icon" style="background-color: {category.color || 'var(--color-bg-tertiary)'}">
-										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-										</svg>
-									</div>
-									<div class="category-info">
-										<span class="category-name">{category.name}</span>
-									</div>
-									{#if selectedCategoryId === category.id}
-										<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-										</svg>
+					<!-- Account Transfer Option (no category) -->
+					<div class="category-section">
+						<div class="section-header">
+							<span class="section-name">Account</span>
+						</div>
+						<div class="section-items">
+							<button 
+								class="category-item"
+								class:selected={selectedCategoryId === 0 || selectedCategoryId === -1}
+								onclick={() => selectNoCategory()}
+							>
+								<div class="radio-circle" class:checked={selectedCategoryId === 0 || selectedCategoryId === -1}>
+									{#if selectedCategoryId === 0 || selectedCategoryId === -1}
+										<div class="radio-dot"></div>
 									{/if}
-								</button>
-							{/each}
+								</div>
+								<div class="category-info">
+									<span class="category-name">Account Transfer</span>
+									<span class="category-group-label">No category - direct account balance change</span>
+								</div>
+							</button>
+						</div>
+					</div>
+
+					<!-- Categories by Group -->
+					{#each Object.entries(groupedCategories()) as [groupName, groupCategories] (groupName)}
+						<div class="category-section">
+							<div class="section-header">
+								<span class="section-name">{groupName}</span>
+							</div>
+							<div class="section-items">
+								{#each groupCategories as category (category.id)}
+									<button 
+										class="category-item"
+										class:selected={selectedCategoryId === category.id}
+										onclick={() => selectCategory(category)}
+									>
+										<div class="radio-circle" class:checked={selectedCategoryId === category.id}>
+											{#if selectedCategoryId === category.id}
+												<div class="radio-dot"></div>
+											{/if}
+										</div>
+										<span class="category-name">{category.name}</span>
+										<span class="category-balance">{formatCurrency(category.balance || 0)}</span>
+									</button>
+								{/each}
+							</div>
 						</div>
 					{/each}
 				</div>
@@ -232,27 +264,12 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.search-input-wrapper {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		background-color: var(--color-bg-secondary);
-		border-radius: 12px;
-		padding: 0 16px;
-	}
-
-	.search-icon {
-		width: 20px;
-		height: 20px;
-		color: var(--color-text-muted);
-		flex-shrink: 0;
-	}
-
 	.search-input {
-		flex: 1;
+		width: 100%;
 		background: transparent;
 		border: none;
-		padding: 14px 0;
+		border-bottom: 1px solid var(--color-border);
+		padding: 8px 0;
 		font-size: 16px;
 		color: var(--color-text-primary);
 		outline: none;
@@ -262,61 +279,53 @@
 		color: var(--color-text-muted);
 	}
 
-	.clear-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		background-color: var(--color-bg-tertiary);
-		border: none;
-		border-radius: 50%;
-		color: var(--color-text-muted);
-	}
-
-	.clear-btn svg {
-		width: 16px;
-		height: 16px;
+	.search-input:focus {
+		border-bottom-color: var(--color-primary);
 	}
 
 	/* Content */
 	.modal-content {
 		flex: 1;
 		overflow-y: auto;
+		padding: 16px;
 	}
 
 	/* Categories List */
 	.categories-list {
 		display: flex;
 		flex-direction: column;
+		gap: 20px;
 	}
 
-	.category-group {
+	/* Category Section */
+	.category-section {
 		display: flex;
 		flex-direction: column;
 	}
 
-	.group-header {
-		padding: 12px 16px 8px;
-		background-color: var(--color-bg-secondary);
-		border-bottom: 1px solid var(--color-border);
-		position: sticky;
-		top: 0;
+	.section-header {
+		padding: 0 4px 8px;
 	}
 
-	.group-name {
+	.section-name {
 		font-size: 13px;
 		font-weight: 600;
-		color: var(--color-text-muted);
+		color: var(--color-text-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.5px;
+		letter-spacing: 0.3px;
+	}
+
+	.section-items {
+		background-color: var(--color-bg-secondary);
+		border-radius: 12px;
+		overflow: hidden;
 	}
 
 	.category-item {
 		display: flex;
 		align-items: center;
-		gap: 16px;
-		padding: 14px 16px;
+		gap: 12px;
+		padding: 16px;
 		background: none;
 		border: none;
 		border-bottom: 1px solid var(--color-border);
@@ -325,47 +334,62 @@
 		cursor: pointer;
 	}
 
+	.category-item:last-child {
+		border-bottom: none;
+	}
+
 	.category-item:active {
-		background-color: var(--color-bg-secondary);
+		background-color: var(--color-bg-tertiary);
 	}
 
-	.category-item.selected {
-		background-color: var(--color-bg-secondary);
-	}
-
-	.category-icon {
-		width: 36px;
-		height: 36px;
+	/* Radio Circle */
+	.radio-circle {
+		width: 22px;
+		height: 22px;
+		border: 2px solid var(--color-text-muted);
+		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 8px;
-		color: white;
 		flex-shrink: 0;
+		transition: border-color 0.15s;
 	}
 
-	.category-icon svg {
-		width: 18px;
-		height: 18px;
+	.radio-circle.checked {
+		border-color: var(--color-primary);
+	}
+
+	.radio-dot {
+		width: 12px;
+		height: 12px;
+		background-color: var(--color-primary);
+		border-radius: 50%;
 	}
 
 	.category-info {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.category-name {
-		display: block;
+		flex: 1;
 		font-size: 16px;
 		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
-	.check-icon {
-		width: 24px;
-		height: 24px;
-		color: var(--color-primary);
-		flex-shrink: 0;
+	.category-group-label {
+		font-size: 13px;
+		color: var(--color-text-muted);
+	}
+
+	.category-balance {
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--color-success);
 	}
 
 	/* States */

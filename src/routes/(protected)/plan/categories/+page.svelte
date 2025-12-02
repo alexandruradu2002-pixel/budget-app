@@ -41,12 +41,6 @@
 	let formName = $state('');
 	let formGroupName = $state('');
 
-	// Drag and drop state
-	let draggedCategory = $state<Category | null>(null);
-	let draggedGroup = $state<string | null>(null);
-	let dragOverGroup = $state<string | null>(null);
-	let dragOverCategory = $state<number | null>(null);
-
 	// Derived: all available groups for dropdown (from DB + any group_names from categories)
 	let availableGroups = $derived.by(() => {
 		const groupNames = new Set<string>();
@@ -149,13 +143,10 @@
 					isExpanded: true
 				}))
 				.sort((a, b) => {
-					// Uncategorized always at the top
-					if (a.name === UNCATEGORIZED) return -1;
-					if (b.name === UNCATEGORIZED) return 1;
-					// Sort by DB order, then alphabetically
-					const orderA = groupSortOrders.get(a.name) ?? 999;
-					const orderB = groupSortOrders.get(b.name) ?? 999;
-					if (orderA !== orderB) return orderA - orderB;
+					// Uncategorized always at the end
+					if (a.name === UNCATEGORIZED) return 1;
+					if (b.name === UNCATEGORIZED) return -1;
+					// Sort alphabetically
 					return a.name.localeCompare(b.name);
 				});
 		} catch (e) {
@@ -297,135 +288,6 @@
 		categoryToDelete = null;
 	}
 
-	// Drag and drop handlers
-	function setupDragTransfer(e: DragEvent, data: string) {
-		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
-			e.dataTransfer.setData('text/plain', data);
-		}
-	}
-
-	function handleDragStart(e: DragEvent, category: Category) {
-		draggedCategory = category;
-		draggedGroup = null;
-		setupDragTransfer(e, String(category.id));
-	}
-
-	function handleGroupDragStart(e: DragEvent, groupName: string) {
-		draggedGroup = groupName;
-		draggedCategory = null;
-		setupDragTransfer(e, groupName);
-	}
-
-	function handleDragOver(e: DragEvent, targetGroupName: string, targetCategoryId?: number) {
-		e.preventDefault();
-		if (e.dataTransfer) {
-			e.dataTransfer.dropEffect = 'move';
-		}
-		dragOverGroup = targetGroupName;
-		dragOverCategory = targetCategoryId ?? null;
-	}
-
-	function handleDragLeave() {
-		dragOverGroup = null;
-		dragOverCategory = null;
-	}
-
-	function handleDragEnd() {
-		draggedCategory = null;
-		draggedGroup = null;
-		dragOverGroup = null;
-		dragOverCategory = null;
-	}
-
-	async function handleDrop(e: DragEvent, targetGroupName: string, targetCategoryId?: number) {
-		e.preventDefault();
-		handleDragEnd();
-
-		if (draggedCategory) {
-			await handleCategoryDrop(targetGroupName, targetCategoryId);
-		} else if (draggedGroup && draggedGroup !== targetGroupName) {
-			await handleGroupDrop(targetGroupName);
-		}
-	}
-
-	async function handleCategoryDrop(targetGroupName: string, targetCategoryId?: number) {
-		if (!draggedCategory) return;
-		
-		const sourceGroup = draggedCategory.group_name || UNCATEGORIZED;
-		
-		// Same group, same position - nothing to do
-		if (sourceGroup === targetGroupName && !targetCategoryId) return;
-		if (targetCategoryId === draggedCategory.id) return;
-
-		// Store the dragged category in a local variable to avoid null checks
-		const category = draggedCategory;
-
-		try {
-			// Get the target group's categories
-			const targetGroup = categoryGroups.find(g => g.name === targetGroupName);
-			if (!targetGroup) return;
-
-			// If moving to a different group, update the group_name
-			if (sourceGroup !== targetGroupName) {
-				await fetch('/api/categories', {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						...category,
-						group_name: targetGroupName === UNCATEGORIZED ? null : targetGroupName
-					})
-				});
-			}
-
-			// Reorder within the group
-			if (targetCategoryId) {
-				// Find the indices
-				const sourceIndex = targetGroup.categories.findIndex(c => c.id === category.id);
-				const targetIndex = targetGroup.categories.findIndex(c => c.id === targetCategoryId);
-				
-				// Build new order - filter out the dragged category and insert at new position
-				let newOrder = targetGroup.categories.filter(c => c.id !== category.id);
-				
-				// If moving from a different group, just insert at target position
-				if (sourceGroup !== targetGroupName) {
-					newOrder.splice(targetIndex, 0, category);
-				} else if (sourceIndex !== -1 && targetIndex !== -1) {
-					// Same group reorder - insert at target position
-					const adjustedIndex = sourceIndex < targetIndex ? targetIndex : targetIndex;
-					newOrder.splice(adjustedIndex, 0, category);
-				}
-				
-				await saveCategoryOrder(targetGroupName, newOrder.map(c => c.id));
-			} else if (sourceGroup !== targetGroupName) {
-				// Moving to a new group without specific position - add to end
-				const newOrder = [...targetGroup.categories.filter(c => c.id !== category.id), category];
-				await saveCategoryOrder(targetGroupName, newOrder.map(c => c.id));
-			}
-			
-			await loadCategories();
-		} catch (e) {
-			console.error('Failed to move category:', e);
-			toast.error('Failed to move category');
-		}
-	}
-
-	async function handleGroupDrop(targetGroupName: string) {
-		if (!draggedGroup) return;
-		
-		const draggedIndex = categoryGroups.findIndex(g => g.name === draggedGroup);
-		const targetIndex = categoryGroups.findIndex(g => g.name === targetGroupName);
-		
-		if (draggedIndex === -1 || targetIndex === -1) return;
-
-		const newGroups = [...categoryGroups];
-		const [removed] = newGroups.splice(draggedIndex, 1);
-		newGroups.splice(targetIndex, 0, removed);
-		categoryGroups = newGroups;
-		
-		await saveGroupOrder(newGroups.map(g => g.name));
-	}
-
 	// Reorder API calls
 	async function saveCategoryOrder(groupName: string, categoryIds: number[]) {
 		try {
@@ -493,9 +355,9 @@
 
 <div class="categories-page">
 	<PageHeader title="Edit Categories">
-		<HeaderButton label="Back to Plan" href="/plan">
+		<HeaderButton label="Close" href="/plan">
 			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 			</svg>
 		</HeaderButton>
 	</PageHeader>
@@ -522,21 +384,10 @@
 				{#each categoryGroups as group, groupIndex (group.name)}
 					<div 
 						class="group-container"
-						class:drag-over={dragOverGroup === group.name && !dragOverCategory}
 						role="listitem"
-						ondragover={(e) => handleDragOver(e, group.name)}
-						ondragleave={handleDragLeave}
-						ondrop={(e) => handleDrop(e, group.name)}
 					>
 						<!-- Group Header -->
-						<div 
-							class="group-header"
-							draggable="true"
-							role="button"
-							tabindex="0"
-							ondragstart={(e) => handleGroupDragStart(e, group.name)}
-							ondragend={handleDragEnd}
-						>
+						<div class="group-header">
 							<button class="group-expand" onclick={(e) => { e.stopPropagation(); toggleGroup(group.name); }} aria-label={group.isExpanded ? `Collapse ${group.name}` : `Expand ${group.name}`}>
 								<svg 
 									class="chevron" 
@@ -553,10 +404,9 @@
 							<span class="group-count">({group.categories.length})</span>
 							
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div class="group-actions" onkeydown={(e) => e.stopPropagation()} onclick={(e) => e.stopPropagation()} ondragstart={(e) => e.stopPropagation()} draggable="false">
+							<div class="group-actions" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 								<button 
 									class="icon-btn"
-									draggable="false"
 									onclick={(e) => { e.stopPropagation(); moveGroup(group.name, 'up'); }}
 									disabled={groupIndex === 0}
 									aria-label="Move group up"
@@ -567,7 +417,6 @@
 								</button>
 								<button 
 									class="icon-btn"
-									draggable="false"
 									onclick={(e) => { e.stopPropagation(); moveGroup(group.name, 'down'); }}
 									disabled={groupIndex === categoryGroups.length - 1}
 									aria-label="Move group down"
@@ -576,12 +425,12 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 									</svg>
 								</button>
-								<button class="icon-btn" draggable="false" onclick={(e) => { e.stopPropagation(); openAddCategory(group.name); }} aria-label="Add category to group">
+								<button class="icon-btn" onclick={(e) => { e.stopPropagation(); openAddCategory(group.name); }} aria-label="Add category to group">
 									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 									</svg>
 								</button>
-								<button class="icon-btn" draggable="false" onclick={(e) => { e.stopPropagation(); openEditGroup(group.name); }} aria-label="Edit group">
+								<button class="icon-btn" onclick={(e) => { e.stopPropagation(); openEditGroup(group.name); }} aria-label="Edit group">
 									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
 									</svg>
@@ -595,28 +444,14 @@
 								{#each group.categories as category, catIndex (category.id)}
 									<div 
 										class="category-item"
-										class:drag-over={dragOverCategory === category.id}
-										draggable="true"
 										role="listitem"
-										ondragstart={(e) => handleDragStart(e, category)}
-										ondragover={(e) => handleDragOver(e, group.name, category.id)}
-										ondragleave={handleDragLeave}
-										ondrop={(e) => handleDrop(e, group.name, category.id)}
-										ondragend={handleDragEnd}
 									>
-										<div class="category-drag-handle">
-											<svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
-												<path d="M8 6h2v2H8V6zm6 0h2v2h-2V6zM8 11h2v2H8v-2zm6 0h2v2h-2v-2zm-6 5h2v2H8v-2zm6 0h2v2h-2v-2z" />
-											</svg>
-										</div>
-										
 										<span class="category-name">{category.name}</span>
 										
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
-									<div class="category-actions" onkeydown={(e) => e.stopPropagation()} onclick={(e) => e.stopPropagation()} ondragstart={(e) => e.stopPropagation()} draggable="false">
+										<div class="category-actions" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 											<button 
 												class="icon-btn small"
-												draggable="false"
 												onclick={(e) => { e.stopPropagation(); moveCategory(category, 'up'); }}
 												disabled={catIndex === 0}
 												aria-label="Move up"
@@ -627,7 +462,6 @@
 											</button>
 											<button 
 												class="icon-btn small"
-												draggable="false"
 												onclick={(e) => { e.stopPropagation(); moveCategory(category, 'down'); }}
 												disabled={catIndex === group.categories.length - 1}
 												aria-label="Move down"
@@ -636,12 +470,12 @@
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
 												</svg>
 											</button>
-											<button class="icon-btn small" draggable="false" onclick={(e) => { e.stopPropagation(); openEditCategory(category); }} aria-label="Edit">
+											<button class="icon-btn small" onclick={(e) => { e.stopPropagation(); openEditCategory(category); }} aria-label="Edit">
 												<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
 												</svg>
 											</button>
-											<button class="icon-btn small danger" draggable="false" onclick={(e) => { e.stopPropagation(); openDeleteConfirm(category); }} aria-label="Delete">
+											<button class="icon-btn small danger" onclick={(e) => { e.stopPropagation(); openDeleteConfirm(category); }} aria-label="Delete">
 												<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 												</svg>
@@ -783,11 +617,6 @@
 		background-color: var(--color-bg-secondary);
 		border-radius: 12px;
 		overflow: hidden;
-		transition: box-shadow 0.2s;
-	}
-
-	.group-container.drag-over {
-		box-shadow: 0 0 0 2px var(--color-primary);
 	}
 
 	.group-header {
@@ -796,11 +625,6 @@
 		gap: 8px;
 		padding: 12px 16px;
 		background-color: var(--color-bg-secondary);
-		cursor: grab;
-	}
-
-	.group-header:active {
-		cursor: grabbing;
 	}
 
 	.group-expand {
@@ -850,26 +674,11 @@
 		padding: 12px 16px;
 		padding-left: 48px;
 		background-color: var(--color-bg-primary);
-		cursor: grab;
 		transition: background-color 0.15s;
-	}
-
-	.category-item:active {
-		cursor: grabbing;
 	}
 
 	.category-item:hover {
 		background-color: var(--color-bg-secondary);
-	}
-
-	.category-item.drag-over {
-		background-color: var(--color-bg-tertiary);
-		box-shadow: inset 0 -2px 0 var(--color-primary);
-	}
-
-	.category-drag-handle {
-		color: var(--color-text-muted);
-		opacity: 0.5;
 	}
 
 	.category-name {

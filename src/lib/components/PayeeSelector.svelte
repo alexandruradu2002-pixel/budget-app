@@ -56,9 +56,23 @@
 		closeModal();
 	}
 
-	function useCustomPayee() {
+	async function useCustomPayee() {
 		if (searchQuery.trim()) {
-			selectPayee(searchQuery.trim());
+			const name = searchQuery.trim();
+			// Save the new payee to the database
+			try {
+				const res = await fetch('/api/payees', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name })
+				});
+				if (!res.ok) {
+					console.error('Failed to save new payee');
+				}
+			} catch (e) {
+				console.error('Error saving payee:', e);
+			}
+			selectPayee(name);
 		}
 	}
 
@@ -149,15 +163,7 @@
 								class:selected={selectedPayee === payee.name}
 								onclick={() => selectPayee(payee.name)}
 							>
-								<div class="payee-icon">
-									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-									</svg>
-								</div>
-								<div class="payee-info">
-									<span class="payee-name">{payee.name}</span>
-									<span class="payee-count">{payee.usage_count} transaction{payee.usage_count !== 1 ? 's' : ''}</span>
-								</div>
+								<span class="payee-name">{payee.name}</span>
 								{#if selectedPayee === payee.name}
 									<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -354,12 +360,12 @@
 
 	.payee-name {
 		display: block;
+		flex: 1;
 		font-size: 16px;
 		font-weight: 500;
 		color: var(--color-text-primary);
 	}
 
-	.payee-count,
 	.payee-hint {
 		display: block;
 		font-size: 13px;

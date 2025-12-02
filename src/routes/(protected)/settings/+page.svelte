@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PageHeader, SettingsSection } from '$lib/components';
+	import CurrencySettings from '$lib/components/settings/CurrencySettings.svelte';
 	import YNABImport from '$lib/components/settings/YNABImport.svelte';
 </script>
 
@@ -7,6 +8,9 @@
 	<PageHeader title="Settings" />
 
 	<div class="settings-content">
+		<!-- Currency Settings Section -->
+		<CurrencySettings />
+
 		<!-- YNAB Import Section -->
 		<YNABImport />
 
