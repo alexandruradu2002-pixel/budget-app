@@ -98,15 +98,71 @@ export const POST: RequestHandler = async (event) => {
 	const cleared = data.cleared ?? 'uncleared';
 	const notes = data.notes ?? null;
 	const tags = data.tags ? JSON.stringify(data.tags) : null;
+	const isTransfer = data.is_transfer ?? false;
+	const transferAccountId = data.transfer_account_id ?? null;
 
 	// Verify account belongs to user
 	await verifyOwnership(db, 'accounts', account_id, user.userId, 'Account');
 
-	// Verify category belongs to user (only if category_id is provided)
-	if (category_id) {
+	// Verify category belongs to user (only if category_id is provided and not a transfer)
+	if (category_id && !isTransfer) {
 		await verifyOwnership(db, 'categories', category_id, user.userId, 'Category');
 	}
 
+	// Handle transfer transactions
+	if (isTransfer && transferAccountId) {
+		// Verify transfer target account belongs to user
+		await verifyOwnership(db, 'accounts', transferAccountId, user.userId, 'Target account');
+
+		// Get account names for better descriptions
+		const sourceAccount = await db.execute({
+			sql: 'SELECT name FROM accounts WHERE id = ? AND user_id = ?',
+			args: [account_id, user.userId]
+		});
+		const targetAccount = await db.execute({
+			sql: 'SELECT name FROM accounts WHERE id = ? AND user_id = ?',
+			args: [transferAccountId, user.userId]
+		});
+
+		const sourceAccountName = sourceAccount.rows[0]?.name as string || 'Account';
+		const targetAccountName = targetAccount.rows[0]?.name as string || 'Account';
+
+		// Create outflow transaction (from source account)
+		const outflowDescription = `Transfer to: ${targetAccountName}`;
+		const outflowResult = await db.execute({
+			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, transfer_account_id)
+				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			args: [user.userId, account_id, -Math.abs(amount), outflowDescription, date, outflowDescription, memo, flag, cleared, notes, tags, transferAccountId]
+		});
+
+		// Create inflow transaction (to target account)
+		const inflowDescription = `Transfer from: ${sourceAccountName}`;
+		const inflowResult = await db.execute({
+			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, transfer_account_id)
+				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			args: [user.userId, transferAccountId, Math.abs(amount), inflowDescription, date, inflowDescription, memo, flag, cleared, notes, tags, account_id]
+		});
+
+		// Update source account balance (decrease)
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+			args: [Math.abs(amount), account_id]
+		});
+
+		// Update target account balance (increase)
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+			args: [Math.abs(amount), transferAccountId]
+		});
+
+		return createdResponse({ 
+			id: Number(outflowResult.lastInsertRowid), 
+			transfer_id: Number(inflowResult.lastInsertRowid),
+			message: 'Transfer created' 
+		});
+	}
+
+	// Regular transaction (non-transfer)
 	const result = await db.execute({
 		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags)
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

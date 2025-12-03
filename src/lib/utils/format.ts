@@ -146,6 +146,17 @@ export function formatMonthYear(date: Date): string {
 }
 
 /**
+ * Format a date to show abbreviated month and year (e.g., "Dec 2025")
+ */
+export function formatMonthYearShort(date: Date): string {
+	const months = [
+		'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+		'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+	];
+	return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/**
  * Format a date to ISO format (YYYY-MM-DD)
  */
 export function formatDateISO(date: Date): string {

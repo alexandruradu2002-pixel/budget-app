@@ -1,9 +1,30 @@
+<script lang="ts" module>
+	// Transfer payee prefix constant
+	export const TRANSFER_PAYEE_PREFIX = 'Transfer to: ';
+
+	// Helper to check if a payee is a transfer
+	export function isTransferPayee(payee: string): boolean {
+		return payee.startsWith(TRANSFER_PAYEE_PREFIX);
+	}
+
+	// Helper to get target account name from transfer payee
+	export function getTransferTargetAccountName(payee: string): string | null {
+		if (!isTransferPayee(payee)) return null;
+		return payee.slice(TRANSFER_PAYEE_PREFIX.length);
+	}
+</script>
+
 <script lang="ts">
+	import type { Account } from '$lib/types';
+
 	// Props
 	let {
 		show = $bindable(false),
 		selectedPayee = $bindable(''),
+		accounts = [] as Account[],
+		currentAccountId = undefined as number | undefined,
 		onSelect = (payee: string) => {},
+		onTransferSelect = (payee: string, targetAccountId: number) => {},
 		onClose = () => {}
 	} = $props();
 
@@ -12,6 +33,11 @@
 	let payees = $state<{ name: string; usage_count: number }[]>([]);
 	let loading = $state(false);
 	let error = $state('');
+
+	// Filter accounts for transfer (exclude current account)
+	let transferAccounts = $derived(
+		accounts.filter(a => a.is_active && a.id !== currentAccountId)
+	);
 
 	// Load payees when modal opens
 	$effect(() => {
@@ -53,6 +79,13 @@
 	function selectPayee(name: string) {
 		selectedPayee = name;
 		onSelect(name);
+		closeModal();
+	}
+
+	function selectTransfer(account: Account) {
+		const payeeName = `${TRANSFER_PAYEE_PREFIX}${account.name}`;
+		selectedPayee = payeeName;
+		onTransferSelect(payeeName, account.id);
 		closeModal();
 	}
 
@@ -152,6 +185,51 @@
 							<span class="payee-hint">Create new payee</span>
 						</div>
 					</button>
+				{/if}
+
+				<!-- Transfer Between Accounts Section -->
+				{#if transferAccounts.length > 0 && (!searchQuery || 'transfer'.includes(searchQuery.toLowerCase()))}
+					<div class="section-header">
+						<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+						</svg>
+						<span>Transfer Between Accounts</span>
+					</div>
+					<div class="payees-list">
+						{#each transferAccounts as account (account.id)}
+							{@const transferPayeeName = `${TRANSFER_PAYEE_PREFIX}${account.name}`}
+							<button 
+								class="payee-item transfer-item"
+								class:selected={selectedPayee === transferPayeeName}
+								onclick={() => selectTransfer(account)}
+							>
+								<div class="payee-icon transfer" style="background-color: {account.color}20; color: {account.color};">
+									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+									</svg>
+								</div>
+								<div class="payee-info">
+									<span class="payee-name">Transfer to: {account.name}</span>
+									<span class="payee-hint">{account.type} • No category</span>
+								</div>
+								{#if selectedPayee === transferPayeeName}
+									<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+									</svg>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Regular Payees Section -->
+				{#if payees.length > 0 && transferAccounts.length > 0}
+					<div class="section-header">
+						<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+						</svg>
+						<span>Payees</span>
+					</div>
 				{/if}
 
 				<!-- Payees List -->
@@ -348,9 +426,37 @@
 		color: white;
 	}
 
+	.payee-icon.transfer {
+		border-radius: 50%;
+	}
+
 	.payee-icon svg {
 		width: 20px;
 		height: 20px;
+	}
+
+	/* Section Headers */
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 16px;
+		background-color: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.section-icon {
+		width: 16px;
+		height: 16px;
+	}
+
+	.transfer-item {
+		background-color: transparent;
 	}
 
 	.payee-info {

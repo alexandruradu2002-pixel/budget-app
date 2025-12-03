@@ -3,7 +3,7 @@
 	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
 	import type { CurrencyValue } from '$lib/constants';
 	import { TransactionModal, LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
-	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
+	import { formatCurrency, formatMonthYearShort } from '$lib/utils/format';
 	import { currencyStore } from '$lib/stores';
 
 	// Constants
@@ -69,6 +69,43 @@
 
 	// Map of account_id to currency for conversion
 	let accountCurrencies = $state<Map<number, CurrencyValue>>(new Map());
+
+	// Calculate cashflow: sum of all transactions in the month
+	// Excludes: account transfers and balance adjustment transactions
+	// Positive = income, negative = expenses. Net result shows overall cashflow.
+	let cashflow = $derived.by(() => {
+		// Access currencyStore.value to create reactivity dependency
+		const _ = currencyStore.value;
+		
+		// Patterns for adjustment transactions to exclude
+		const adjustmentPatterns = [
+			'Closing Balance',
+			'Reconciliation Adjustment',
+			'Balance Adjustment',
+			'Starting Balance'
+		];
+		
+		let total = 0;
+		for (const t of transactions) {
+			// Skip account transfers (transfer_account_id is set)
+			if (t.transfer_account_id) continue;
+			
+			// Skip adjustment transactions based on description/payee
+			const desc = (t.description || '').toLowerCase();
+			const payee = (t.payee || '').toLowerCase();
+			const isAdjustment = adjustmentPatterns.some(pattern => 
+				desc.includes(pattern.toLowerCase()) || payee.includes(pattern.toLowerCase())
+			);
+			if (isAdjustment) continue;
+			
+			// Get the currency of the transaction's account
+			const accountCurrency = accountCurrencies.get(t.account_id) || 'RON';
+			// Convert to main currency, keep original sign
+			const convertedAmount = currencyStore.convert(t.amount, accountCurrency);
+			total += convertedAmount;
+		}
+		return total;
+	});
 
 	// Calculate total spent per category (converting to main currency)
 	// For spending: negative amounts become positive (expenses shown as positive spent)
@@ -273,7 +310,7 @@
 		}
 	}
 
-	let displayMonth = $derived(formatMonthYear(currentDate));
+	let displayMonth = $derived(formatMonthYearShort(currentDate));
 
 	function toggleGroup(groupId: number) {
 		categoryGroups = categoryGroups.map(group => 
@@ -328,6 +365,14 @@
 			</svg>
 		</HeaderButton>
 	</PageHeader>
+
+	<!-- Cashflow Summary -->
+	<div class="cashflow-summary">
+		<span class="cashflow-label">Cashflow</span>
+		<span class="cashflow-value" class:positive={cashflow >= 0} class:negative={cashflow < 0}>
+			{formatCurrency(cashflow)}
+		</span>
+	</div>
 
 	<!-- Month Picker Dropdown -->
 	{#if showMonthPicker}
@@ -440,6 +485,35 @@
 		flex-direction: column;
 		height: calc(100vh - 70px);
 		height: calc(100dvh - 70px);
+	}
+
+	/* Cashflow Summary */
+	.cashflow-summary {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 16px;
+		background-color: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.cashflow-label {
+		font-size: 14px;
+		color: var(--color-text-muted);
+	}
+
+	.cashflow-value {
+		font-size: 18px;
+		font-weight: 600;
+	}
+
+	.cashflow-value.positive {
+		color: var(--color-success);
+	}
+
+	.cashflow-value.negative {
+		color: var(--color-danger);
 	}
 
 	/* Sticky Column Header */

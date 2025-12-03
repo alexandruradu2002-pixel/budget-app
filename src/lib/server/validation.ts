@@ -54,6 +54,7 @@ export const transactionSchema = z.object({
 	memo: z.string().optional(),
 	flag: z.string().optional(),
 	cleared: z.enum(['cleared', 'uncleared', 'reconciled']).optional(),
+	is_transfer: z.boolean().optional(),
 	transfer_account_id: z.number().int().positive().optional(),
 	notes: z.string().optional(),
 	tags: z.array(z.string()).optional(),

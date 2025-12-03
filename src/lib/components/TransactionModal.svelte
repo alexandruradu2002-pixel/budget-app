@@ -8,7 +8,7 @@
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
 	import { getCurrencySymbol } from '$lib/utils/format';
-	import PayeeSelector from './PayeeSelector.svelte';
+	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
 
@@ -37,6 +37,10 @@
 		isCleared: false,
 		flag: 'none' as 'none' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple'
 	});
+
+	// Transfer state
+	let isTransfer = $state(false);
+	let transferTargetAccountId = $state<number | null>(null);
 
 	// Calculator state
 	let calcDisplay = $state('0');
@@ -125,6 +129,10 @@
 			appliedLocationSuggestion = false;
 			currentPosition = null;
 
+			// Reset transfer state
+			isTransfer = false;
+			transferTargetAccountId = null;
+
 			if (editingTransaction) {
 				const amount = Math.abs(Math.round(editingTransaction.amount));
 				formData = {
@@ -145,6 +153,12 @@
 				selectedCategoryName = cat?.name || '';
 				const acc = accounts.find(a => a.id === editingTransaction.account_id);
 				selectedAccountName = acc?.name || '';
+
+				// Check if this is a transfer transaction
+				if (editingTransaction.transfer_account_id) {
+					isTransfer = true;
+					transferTargetAccountId = editingTransaction.transfer_account_id;
+				}
 			} else {
 				// Determine the initial account: use defaultAccountId if provided, otherwise first account
 				const initialAccountId = defaultAccountId ?? accounts[0]?.id ?? 0;
@@ -233,13 +247,28 @@
 		return `${sign}${formatted}${symbol}`;
 	});
 
-	// Handle payee selection
+	// Handle payee selection (regular payee)
 	function handlePayeeSelect(payee: string) {
 		formData.description = payee;
+		// If a regular payee is selected, clear transfer state
+		isTransfer = false;
+		transferTargetAccountId = null;
+	}
+
+	// Handle transfer payee selection
+	function handleTransferSelect(payee: string, targetAccountId: number) {
+		formData.description = payee;
+		// Mark as transfer and clear category
+		isTransfer = true;
+		transferTargetAccountId = targetAccountId;
+		formData.category_id = undefined;
+		selectedCategoryName = '';
 	}
 
 	// Handle category selection
 	function handleCategorySelect(category: Category) {
+		// Don't allow category selection for transfers
+		if (isTransfer) return;
 		formData.category_id = category.id;
 		selectedCategoryName = category.name;
 	}
@@ -248,6 +277,14 @@
 	function handleAccountSelect(account: Account) {
 		formData.account_id = account.id;
 		selectedAccountName = account.name;
+		// If this is a transfer and we're changing the source account,
+		// we need to ensure the target isn't the same as the source
+		if (isTransfer && transferTargetAccountId === account.id) {
+			// Reset transfer if source and target are the same
+			isTransfer = false;
+			transferTargetAccountId = null;
+			formData.description = '';
+		}
 	}
 
 	// Formatted date display (DD.MM.YYYY)
@@ -344,13 +381,27 @@
 			return;
 		}
 
+		// Validate transfer
+		if (isTransfer && (!transferTargetAccountId || transferTargetAccountId === formData.account_id)) {
+			alert('Please select a valid transfer destination');
+			return;
+		}
+
 		const payload: Record<string, any> = {
-			description: formData.description || 'Transaction',
+			description: formData.description || (isTransfer ? 'Transfer' : 'Transaction'),
 			amount: formData.isInflow ? Math.abs(amount) : -Math.abs(amount),
 			date: formData.date,
 			account_id: formData.account_id,
 			cleared: formData.isCleared ? 'cleared' : 'uncleared'
 		};
+
+		// Handle transfer
+		if (isTransfer && transferTargetAccountId) {
+			payload.is_transfer = true;
+			payload.transfer_account_id = transferTargetAccountId;
+			// For transfers, always use outflow from source (the amount will be inverted for target)
+			payload.amount = -Math.abs(amount);
+		}
 
 		// Only include optional fields if they have values
 		if (formData.description) {
@@ -364,8 +415,8 @@
 			payload.flag = formData.flag;
 		}
 
-		// Only include category_id if it's a valid positive number
-		if (formData.category_id && formData.category_id > 0) {
+		// Only include category_id if it's a valid positive number and NOT a transfer
+		if (!isTransfer && formData.category_id && formData.category_id > 0) {
 			payload.category_id = formData.category_id;
 		}
 
@@ -377,8 +428,8 @@
 		console.log('Saving transaction with payload:', payload);
 		await onSave(payload);
 
-		// Save learned location if we have position data (for new transactions only)
-		if (!editingTransaction && currentPosition && (formData.description || formData.category_id || formData.account_id)) {
+		// Save learned location if we have position data (for new transactions only, not for transfers)
+		if (!editingTransaction && !isTransfer && currentPosition && (formData.description || formData.category_id || formData.account_id)) {
 			saveLearnedLocation({
 				latitude: currentPosition.latitude,
 				longitude: currentPosition.longitude,
@@ -504,21 +555,38 @@
 				</button>
 
 				<!-- Category -->
-				<button type="button" class="form-row" onclick={() => showCategorySelector = true}>
-					<div class="form-icon primary square">
-						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-						</svg>
+				<button 
+					type="button" 
+					class="form-row" 
+					class:disabled={isTransfer}
+					onclick={() => !isTransfer && (showCategorySelector = true)}
+				>
+					<div class="form-icon primary square" class:transfer-icon={isTransfer}>
+						{#if isTransfer}
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+							</svg>
+						{:else}
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+							</svg>
+						{/if}
 					</div>
 					<div class="form-field">
 						<span class="field-label">Category</span>
-						<span class="field-value" class:placeholder={!selectedCategoryName}>
-							{selectedCategoryName || 'Select category'}
+						<span class="field-value" class:placeholder={!selectedCategoryName && !isTransfer} class:transfer-text={isTransfer}>
+							{#if isTransfer}
+								Transfer — No Category
+							{:else}
+								{selectedCategoryName || 'Select category'}
+							{/if}
 						</span>
 					</div>
-					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-					</svg>
+					{#if !isTransfer}
+						<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+						</svg>
+					{/if}
 				</button>
 
 				<!-- Account -->
@@ -695,7 +763,10 @@
 <PayeeSelector 
 	bind:show={showPayeeSelector}
 	selectedPayee={formData.description}
+	{accounts}
+	currentAccountId={formData.account_id}
 	onSelect={handlePayeeSelect}
+	onTransferSelect={handleTransferSelect}
 />
 
 <!-- Category Selector Modal -->
@@ -881,6 +952,15 @@
 		border-bottom: none;
 	}
 
+	.form-row.disabled {
+		cursor: default;
+		opacity: 0.8;
+	}
+
+	.form-row.disabled:active {
+		background: none;
+	}
+
 	.form-icon {
 		width: 32px;
 		height: 32px;
@@ -894,6 +974,11 @@
 	.form-icon.primary {
 		background-color: var(--color-primary);
 		color: white;
+	}
+
+	.form-icon.transfer-icon {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-muted);
 	}
 
 	.form-icon.square {
@@ -958,6 +1043,11 @@
 	.field-value.placeholder {
 		color: var(--color-text-muted);
 		font-weight: 400;
+	}
+
+	.field-value.transfer-text {
+		color: var(--color-text-muted);
+		font-style: italic;
 	}
 
 	.field-muted {

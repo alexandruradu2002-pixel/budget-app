@@ -23,7 +23,7 @@ export const GET: RequestHandler = async (event) => {
 	const incomeResult = await db.execute({
 		sql: `SELECT COALESCE(SUM(amount), 0) as total 
 		      FROM transactions 
-		      WHERE user_id = ? AND amount > 0 AND date >= ?`,
+		      WHERE user_id = ? AND amount > 0 AND date >= ? AND transfer_account_id IS NULL`,
 		args: [user.userId, monthStart]
 	});
 	const monthlyIncome = (incomeResult.rows[0]?.total as number) || 0;
@@ -32,7 +32,7 @@ export const GET: RequestHandler = async (event) => {
 	const expensesResult = await db.execute({
 		sql: `SELECT COALESCE(ABS(SUM(amount)), 0) as total 
 		      FROM transactions 
-		      WHERE user_id = ? AND amount < 0 AND date >= ?`,
+		      WHERE user_id = ? AND amount < 0 AND date >= ? AND transfer_account_id IS NULL`,
 		args: [user.userId, monthStart]
 	});
 	const monthlyExpenses = (expensesResult.rows[0]?.total as number) || 0;
