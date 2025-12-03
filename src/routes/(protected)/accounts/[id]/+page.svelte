@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, FloatingActionButton } from '$lib/components';
-	import { formatDate, formatAmount, formatCurrency } from '$lib/utils/format';
+	import { formatDate, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
 
 	let accountId = $derived(Number($page.params.id));
 	
@@ -16,39 +16,10 @@
 	let searchQuery = $state('');
 	let showSearch = $state(false);
 
-	// Currency symbols
-	const currencySymbols: Record<string, string> = {
-		RON: 'lei',
-		EUR: '€',
-		USD: '$',
-		GBP: '£',
-		CHF: 'Fr',
-		PLN: 'zł',
-		HUF: 'Ft',
-		CZK: 'Kč',
-		BGN: 'лв',
-		SEK: 'kr',
-		NOK: 'kr',
-		DKK: 'kr',
-		JPY: '¥',
-		CNY: '¥',
-		AUD: 'A$',
-		CAD: 'C$'
-	};
-
-	// Format amount with account's currency
-	function formatWithCurrency(amount: number): string {
+	// Format amount with account's currency (uses sign for negative amounts)
+	function formatAccountAmount(amount: number): string {
 		const currency = account?.currency || 'RON';
-		const symbol = currencySymbols[currency] || currency;
-		const formatted = amount.toLocaleString('ro-RO', { 
-			minimumFractionDigits: 2, 
-			maximumFractionDigits: 2 
-		});
-		
-		if (['€', '$', '£', '¥'].includes(symbol)) {
-			return `${symbol}${formatted}`;
-		}
-		return `${formatted} ${symbol}`;
+		return formatWithCurrencyUtil(amount, currency);
 	}
 
 	let groupedTransactions = $derived.by(() => {
@@ -182,7 +153,7 @@
 		<div class="account-header">
 			<div class="account-type-badge">{getAccountTypeLabel(account.type)}</div>
 			<span class="account-balance" class:negative={account.balance < 0}>
-				{formatWithCurrency(account.balance)}
+				{formatAccountAmount(account.balance)}
 			</span>
 			{#if account.currency && account.currency !== 'RON'}
 				<span class="account-currency-note">≈ {formatCurrency(account.balance)}</span>
@@ -230,7 +201,7 @@
 							<div class="transaction-amount-section">
 								<div class="amount-with-status">
 									<span class="transaction-amount" class:positive={tx.amount >= 0}>
-										{formatAmount(tx.amount)}
+										{formatAccountAmount(tx.amount)}
 									</span>
 									<span class="status-dot">
 										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">

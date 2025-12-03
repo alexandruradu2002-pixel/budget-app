@@ -65,12 +65,46 @@ export const POST: RequestHandler = async (event) => {
 	return createdResponse({ id: Number(result.lastInsertRowid), message: 'Account created' });
 };
 
+// Exchange rates to RON (base currency) - same as in constants.ts
+const EXCHANGE_RATES_TO_RON: Record<string, number> = {
+	RON: 1,
+	EUR: 4.97,
+	USD: 4.58,
+	GBP: 5.82,
+	CHF: 5.18,
+	PLN: 1.15,
+	HUF: 0.0125,
+	CZK: 0.20,
+	BGN: 2.54,
+	SEK: 0.43,
+	NOK: 0.42,
+	DKK: 0.67,
+	JPY: 0.030,
+	CNY: 0.63,
+	AUD: 2.98,
+	CAD: 3.28
+};
+
+/**
+ * Convert amount from one currency to another
+ */
+function convertCurrency(amount: number, fromCurrency: string, toCurrency: string): number {
+	if (fromCurrency === toCurrency) return amount;
+	
+	// Convert to RON first, then to target currency
+	const amountInRON = amount * (EXCHANGE_RATES_TO_RON[fromCurrency] || 1);
+	const convertedAmount = amountInRON / (EXCHANGE_RATES_TO_RON[toCurrency] || 1);
+	
+	// Round to 2 decimal places
+	return Math.round(convertedAmount * 100) / 100;
+}
+
 // PUT /api/accounts - Update an account
 export const PUT: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const body = await event.request.json();
 
-	const { id, ...data } = body;
+	const { id, convertTransactions, ...data } = body;
 	if (!id) {
 		throw error(400, 'Account ID is required');
 	}
@@ -82,9 +116,9 @@ export const PUT: RequestHandler = async (event) => {
 
 	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
 
-	// Get current account balance before update
+	// Get current account data before update
 	const currentAccount = await db.execute({
-		sql: 'SELECT balance FROM accounts WHERE id = ? AND user_id = ?',
+		sql: 'SELECT balance, currency FROM accounts WHERE id = ? AND user_id = ?',
 		args: [id, user.userId]
 	});
 
@@ -93,16 +127,49 @@ export const PUT: RequestHandler = async (event) => {
 	}
 
 	const currentBalance = currentAccount.rows[0].balance as number;
+	const currentCurrency = (currentAccount.rows[0].currency as string) || 'RON';
 
 	const { name, type } = parsed.data;
-	const newBalance = parsed.data.balance ?? 0;
-	const currency = parsed.data.currency ?? 'RON';
+	let newBalance = parsed.data.balance ?? 0;
+	const newCurrency = parsed.data.currency ?? 'RON';
 	const color = parsed.data.color ?? '#3B82F6';
 	const icon = parsed.data.icon ?? null;
 
-	// If balance changed, create a reconciliation transaction
+	// Track if currency changed and transactions were converted
+	let currencyConverted = false;
+	let transactionsConverted = 0;
+
+	// If currency changed and convertTransactions is true, convert all transactions
+	if (currentCurrency !== newCurrency && convertTransactions) {
+		// Get all transactions for this account
+		const transactions = await db.execute({
+			sql: 'SELECT id, amount FROM transactions WHERE account_id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+
+		// Update each transaction with converted amount
+		for (const tx of transactions.rows) {
+			const oldAmount = tx.amount as number;
+			const newAmount = convertCurrency(oldAmount, currentCurrency, newCurrency);
+			
+			await db.execute({
+				sql: 'UPDATE transactions SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+				args: [newAmount, tx.id]
+			});
+		}
+
+		transactionsConverted = transactions.rows.length;
+		currencyConverted = true;
+
+		// Also convert the balance
+		newBalance = convertCurrency(currentBalance, currentCurrency, newCurrency);
+	}
+
+	// If balance changed (and not due to currency conversion), create a reconciliation transaction
 	const balanceDifference = newBalance - currentBalance;
-	if (balanceDifference !== 0) {
+	const shouldReconcile = !currencyConverted && balanceDifference !== 0;
+	
+	if (shouldReconcile) {
 		const description = balanceDifference > 0 ? 'Reconciliation Adjustment (+)' : 'Reconciliation Adjustment (-)';
 		
 		await db.execute({
@@ -116,10 +183,15 @@ export const PUT: RequestHandler = async (event) => {
 		sql: `UPDATE accounts 
 			  SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND user_id = ?`,
-		args: [name, type, newBalance, currency, color, icon, id, user.userId]
+		args: [name, type, newBalance, newCurrency, color, icon, id, user.userId]
 	});
 
-	return successResponse({ message: 'Account updated', reconciled: balanceDifference !== 0 });
+	return successResponse({ 
+		message: 'Account updated', 
+		reconciled: shouldReconcile,
+		currencyConverted,
+		transactionsConverted
+	});
 };
 
 // DELETE /api/accounts - Soft delete an account with optional balance transfer or zero-out, or permanent delete

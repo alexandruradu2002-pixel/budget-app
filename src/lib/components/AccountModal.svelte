@@ -99,7 +99,10 @@
 	let showCurrencySelector = $state(false);
 	let showCloseConfirm = $state(false);
 	let showDeleteConfirm = $state(false);
+	let showCurrencyChangeConfirm = $state(false);
+	let pendingCurrencyChange = $state<string | null>(null);
 	let selectedTransferAccountId = $state<number | null>(null);
+	let transactionCount = $state(0);
 
 	// Get other active accounts for transfer (excluding current account)
 	let otherAccounts = $derived.by(() => {
@@ -191,6 +194,9 @@
 			const balanceNum = parseFloat(formData.balance) || 0;
 			
 			if (isEditing && account) {
+				// Check if currency changed to send convertTransactions flag
+				const currencyChanged = account.currency !== formData.currency;
+				
 				// Update existing account
 				const response = await fetch('/api/accounts', {
 					method: 'PUT',
@@ -201,7 +207,8 @@
 						type: formData.type,
 						balance: balanceNum,
 						currency: formData.currency,
-						notes: formData.notes.trim() || null
+						notes: formData.notes.trim() || null,
+						convertTransactions: currencyChanged // Convert transactions if currency changed
 					})
 				});
 
@@ -210,7 +217,13 @@
 					throw new Error(data.message || 'Nu s-a putut actualiza contul');
 				}
 
-				toast.success('Contul a fost actualizat');
+				const result = await response.json();
+				
+				if (result.currencyConverted && result.transactionsConverted > 0) {
+					toast.success(`Contul actualizat. ${result.transactionsConverted} tranzacții convertite în ${formData.currency}.`);
+				} else {
+					toast.success('Contul a fost actualizat');
+				}
 			} else {
 				// Create new account
 				const response = await fetch('/api/accounts', {
@@ -354,10 +367,47 @@
 		showTypeSelector = false;
 	}
 
-	// Handle currency selection
-	function selectCurrency(code: string) {
-		formData.currency = code;
+	// Handle currency selection - check if we need confirmation
+	async function selectCurrency(code: string) {
 		showCurrencySelector = false;
+		
+		// If editing and currency is actually changing, check for transactions
+		if (isEditing && account && account.currency !== code) {
+			try {
+				// Fetch transaction count for this account
+				const response = await fetch(`/api/transactions?accountId=${account.id}&limit=1`);
+				if (response.ok) {
+					const data = await response.json();
+					transactionCount = data.total || 0;
+					
+					if (transactionCount > 0) {
+						// Show confirmation dialog
+						pendingCurrencyChange = code;
+						showCurrencyChangeConfirm = true;
+						return;
+					}
+				}
+			} catch {
+				// If we can't check, just proceed with the change
+			}
+		}
+		
+		formData.currency = code;
+	}
+
+	// Confirm currency change with conversion
+	function confirmCurrencyChange() {
+		if (pendingCurrencyChange) {
+			formData.currency = pendingCurrencyChange;
+		}
+		showCurrencyChangeConfirm = false;
+		pendingCurrencyChange = null;
+	}
+
+	// Cancel currency change
+	function cancelCurrencyChange() {
+		showCurrencyChangeConfirm = false;
+		pendingCurrencyChange = null;
 	}
 </script>
 
@@ -563,6 +613,66 @@
 							{/if}
 						</button>
 					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Currency Change Confirmation Sheet -->
+		{#if showCurrencyChangeConfirm}
+			<div class="selector-overlay" onclick={cancelCurrencyChange} role="presentation"></div>
+			<div class="selector-sheet currency-change-sheet">
+				<div class="selector-header">
+					<h3 class="selector-title">Schimbare Valută</h3>
+					<button class="selector-close" aria-label="Close" onclick={cancelCurrencyChange}>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				
+				<div class="currency-change-content">
+					<div class="currency-change-warning">
+						<svg class="warning-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+						<div class="warning-text">
+							<p class="warning-title">Atenție!</p>
+							<p class="warning-description">
+								Acest cont are <strong>{transactionCount}</strong> tranzacți{transactionCount === 1 ? 'e' : 'i'}.
+							</p>
+						</div>
+					</div>
+
+					<div class="currency-change-info">
+						<div class="conversion-preview">
+							<div class="conversion-from">
+								<span class="conversion-label">Din</span>
+								<span class="conversion-currency">{account?.currency || 'RON'}</span>
+							</div>
+							<svg class="conversion-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+							</svg>
+							<div class="conversion-to">
+								<span class="conversion-label">În</span>
+								<span class="conversion-currency">{pendingCurrencyChange}</span>
+							</div>
+						</div>
+						<p class="conversion-note">
+							Toate tranzacțiile și soldul vor fi convertite automat folosind cursul valutar actual.
+						</p>
+					</div>
+
+					<div class="currency-change-actions">
+						<button class="btn-cancel" onclick={cancelCurrencyChange}>
+							Anulează
+						</button>
+						<button class="btn-confirm" onclick={confirmCurrencyChange}>
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+							</svg>
+							Confirmă Conversia
+						</button>
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -1475,5 +1585,156 @@
 	@keyframes spin {
 		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
+	}
+
+	/* Currency Change Confirmation Sheet */
+	.currency-change-sheet {
+		max-height: 80vh;
+	}
+
+	.currency-change-content {
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.currency-change-warning {
+		display: flex;
+		gap: 12px;
+		padding: 16px;
+		background-color: rgba(245, 158, 11, 0.1);
+		border-radius: 12px;
+		border: 1px solid rgba(245, 158, 11, 0.3);
+	}
+
+	.warning-icon {
+		width: 24px;
+		height: 24px;
+		color: #F59E0B;
+		flex-shrink: 0;
+	}
+
+	.warning-text {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.warning-title {
+		font-size: 15px;
+		font-weight: 600;
+		color: #F59E0B;
+		margin: 0;
+	}
+
+	.warning-description {
+		font-size: 14px;
+		color: var(--color-text-secondary);
+		margin: 0;
+		line-height: 1.4;
+	}
+
+	.warning-description strong {
+		color: var(--color-text-primary);
+	}
+
+	.currency-change-info {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.conversion-preview {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+		padding: 16px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 12px;
+	}
+
+	.conversion-from,
+	.conversion-to {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.conversion-label {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+	}
+
+	.conversion-currency {
+		font-size: 20px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.conversion-arrow {
+		width: 24px;
+		height: 24px;
+		color: var(--color-primary);
+	}
+
+	.conversion-note {
+		font-size: 13px;
+		color: var(--color-text-muted);
+		text-align: center;
+		margin: 0;
+		line-height: 1.4;
+	}
+
+	.currency-change-actions {
+		display: flex;
+		gap: 12px;
+		padding-top: 8px;
+	}
+
+	.currency-change-actions .btn-cancel {
+		flex: 1;
+		padding: 14px 16px;
+		border: none;
+		border-radius: 12px;
+		font-size: 15px;
+		font-weight: 500;
+		cursor: pointer;
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-secondary);
+		transition: background-color 0.2s;
+	}
+
+	.currency-change-actions .btn-cancel:hover {
+		background-color: var(--color-bg-secondary);
+	}
+
+	.currency-change-actions .btn-confirm {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px 16px;
+		border: none;
+		border-radius: 12px;
+		font-size: 15px;
+		font-weight: 600;
+		cursor: pointer;
+		background-color: var(--color-primary);
+		color: white;
+		transition: background-color 0.2s;
+	}
+
+	.currency-change-actions .btn-confirm:hover {
+		background-color: var(--color-primary-hover);
+	}
+
+	.currency-change-actions .btn-confirm svg {
+		width: 18px;
+		height: 18px;
 	}
 </style>
