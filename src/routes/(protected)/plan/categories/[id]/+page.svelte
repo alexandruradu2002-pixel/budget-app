@@ -49,8 +49,10 @@
 	let target = $state<Target | null>(null);
 	let targetHistory = $state<TargetHistoryItem[]>([]);
 	
-	// Month selector state
-	let selectedMonth = $state(new Date().toISOString().slice(0, 7));
+	// Month selector state - use local date to avoid UTC timezone issues
+	const now = new Date();
+	const initialMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+	let selectedMonth = $state(initialMonth);
 	
 	// Target form state
 	let showTargetModal = $state(false);
@@ -76,7 +78,10 @@
 		const now = new Date();
 		for (let i = 0; i < 12; i++) {
 			const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-			const value = date.toISOString().slice(0, 7);
+			// Use local date components instead of toISOString() which converts to UTC
+			const year = date.getFullYear();
+			const month = String(date.getMonth() + 1).padStart(2, '0');
+			const value = `${year}-${month}`;
 			const label = date.toLocaleDateString('ro-RO', { month: 'long', year: 'numeric' });
 			months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
 		}
@@ -118,7 +123,10 @@
 		
 		for (let i = chartMonths - 1; i >= 0; i--) {
 			const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-			const monthKey = date.toISOString().slice(0, 7);
+			// Use local date to avoid UTC timezone issues
+			const year = date.getFullYear();
+			const month = String(date.getMonth() + 1).padStart(2, '0');
+			const monthKey = `${year}-${month}`;
 			const stats = monthlyStats.find(s => s.month === monthKey);
 			const label = date.toLocaleDateString('ro-RO', { month: 'short' });
 			

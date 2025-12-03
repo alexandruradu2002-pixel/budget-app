@@ -1,24 +1,123 @@
 <script lang="ts">
-	import { PageHeader, HeaderButton, WorkInProgress } from '$lib/components';
+	import { PageHeader, HeaderButton, LoadingState } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 	
 	// Reports/Reflect page
-	let loading = $state(false);
+	let loading = $state(true);
 
 	// Current month state
 	let currentDate = $state(new Date());
 
 	let displayMonth = $derived(formatMonthYear(currentDate));
 
-	// Mock data
-	const spendingTotal = 349.00;
-	const spendingBudget = 500;
-	const spendingPercent = (spendingTotal / spendingBudget) * 100;
-	
-	const topCategories = [
-		{ name: 'Restaurant/Cantina', amount: 300.00, colorVar: '--color-chart-1' },
-		{ name: 'SuperMarchet', amount: 49.00, colorVar: '--color-chart-2' }
+	// Chart colors for categories
+	const chartColors = [
+		'--color-chart-1',
+		'--color-chart-2', 
+		'--color-chart-3',
+		'--color-chart-4',
+		'--color-chart-5'
 	];
+
+	// Spending data from API
+	let spendingTotal = $state(0);
+	let categorySpending: { id: number; name: string; amount: number; color: string; colorVar: string; percent: number }[] = $state([]);
+
+	// Derived: calculate start and end of selected month (using local timezone)
+	let monthRange = $derived(() => {
+		const year = currentDate.getFullYear();
+		const month = currentDate.getMonth();
+		// Format dates manually to avoid UTC timezone issues
+		const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+		const lastDay = new Date(year, month + 1, 0).getDate();
+		const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+		return { startDate, endDate };
+	});
+
+	// Load spending data - from expense categories (those shown in Plan)
+	async function loadSpendingData() {
+		loading = true;
+		try {
+			const { startDate, endDate } = monthRange();
+			
+			// Get all expense categories (these are the ones shown in Plan)
+			const categoriesResponse = await fetch('/api/categories?type=expense');
+			if (!categoriesResponse.ok) throw new Error('Failed to load categories');
+			const categoriesData = await categoriesResponse.json();
+			
+			// All expense categories (these appear in Plan)
+			const expenseCategories = categoriesData.categories || [];
+			const expenseCategoryIds = new Set(expenseCategories.map((cat: { id: number }) => cat.id));
+			
+			// Load transactions for the month
+			const response = await fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`);
+			if (!response.ok) throw new Error('Failed to load transactions');
+			
+			const data = await response.json();
+			const transactions = data.transactions || [];
+
+			// Group by category and sum amounts (only expenses from expense categories)
+			const categoryMap = new Map<number, { name: string; amount: number; color: string }>();
+			
+			for (const tx of transactions) {
+				// Only count expenses (negative amounts) from expense categories
+				if (tx.amount >= 0) continue;
+				if (!tx.category_id || !expenseCategoryIds.has(tx.category_id)) continue;
+				
+				const categoryId = tx.category_id;
+				const categoryName = tx.category_name || 'Uncategorized';
+				const categoryColor = tx.category_color || '#6B7280';
+				const amount = Math.abs(tx.amount);
+				
+				if (categoryMap.has(categoryId)) {
+					categoryMap.get(categoryId)!.amount += amount;
+				} else {
+					categoryMap.set(categoryId, { name: categoryName, amount, color: categoryColor });
+				}
+			}
+
+			// Convert to array and sort by amount descending
+			const categoriesArray = Array.from(categoryMap.entries())
+				.map(([id, data], index) => ({
+					id: id,
+					name: data.name,
+					amount: data.amount,
+					color: data.color,
+					colorVar: chartColors[index % chartColors.length],
+					percent: 0
+				}))
+				.sort((a, b) => b.amount - a.amount);
+
+			// Calculate total and percentages
+			const total = categoriesArray.reduce((sum, cat) => sum + cat.amount, 0);
+			spendingTotal = total;
+			
+			categorySpending = categoriesArray.map(cat => ({
+				...cat,
+				percent: total > 0 ? (cat.amount / total) * 100 : 0
+			}));
+
+		} catch (err) {
+			console.error('Error loading spending data:', err);
+		} finally {
+			loading = false;
+		}
+	}
+
+	// Navigate months
+	function previousMonth() {
+		currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+	}
+
+	function nextMonth() {
+		currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+	}
+
+	// Load data on mount and when month changes
+	$effect(() => {
+		const _ = monthRange(); // depend on monthRange
+		loadSpendingData();
+	});
 
 	const netWorth = 15341.44;
 	const assets = 15341.44;
@@ -47,8 +146,6 @@
 	];
 </script>
 
-<WorkInProgress />
-
 <div class="reports-page">
 	<!-- Header -->
 	<PageHeader title="Reflect">
@@ -61,50 +158,82 @@
 		</HeaderButton>
 	</PageHeader>
 
-	<div class="reports-content">
-		<!-- Spending Breakdown Card -->
-		<a href="/reports/spending" class="report-card">
-			<div class="card-header">
-				<div class="card-icon purple">
-					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-				</div>
-				<span class="card-title">Spending Breakdown</span>
-				<svg class="card-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-			
-			<div class="card-body">
-				<span class="card-subtitle">{displayMonth}</span>
-				<span class="card-amount">{formatCurrency(spendingTotal)}</span>
-			</div>
-
-			<div class="progress-bar">
-				<div class="progress-fill purple" style="width: {spendingPercent}%"></div>
-				<div class="progress-fill green" style="width: {100 - spendingPercent}%"></div>
-			</div>
-
-			<div class="categories-section">
-				<div class="categories-header">
-					<span>Top Categories</span>
-					<span>Spent</span>
-				</div>
-				{#each topCategories as category}
-					<div class="category-item">
-						<div class="category-info">
-							<div class="category-dot" style="background-color: var({category.colorVar})"></div>
-							<span class="category-name">{category.name}</span>
-						</div>
-						<span class="category-amount">{formatCurrency(category.amount)}</span>
+	{#if loading}
+		<LoadingState message="Loading spending data..." />
+	{:else}
+		<div class="reports-content">
+			<!-- Spending Breakdown Card -->
+			<div class="report-card">
+				<div class="card-header">
+					<div class="card-icon purple">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
 					</div>
-				{/each}
-			</div>
-		</a>
+					<span class="card-title">Spending Breakdown</span>
+					
+					<!-- Month Navigation -->
+					<div class="month-nav">
+						<button class="month-nav-btn" onclick={previousMonth} aria-label="Previous month">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+							</svg>
+						</button>
+						<button class="month-nav-btn" onclick={nextMonth} aria-label="Next month">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					</div>
+				</div>
+				
+				<div class="card-body">
+					<span class="card-subtitle">{displayMonth}</span>
+					<span class="card-amount">{formatCurrency(spendingTotal)}</span>
+				</div>
 
-		<!-- Net Worth Card -->
-		<a href="/reports/net-worth" class="report-card">
+				<!-- Progress bar segmented by category -->
+				{#if categorySpending.length > 0}
+					<div class="progress-bar">
+						{#each categorySpending as category}
+							<div 
+								class="progress-segment" 
+								style="width: {category.percent}%; background-color: var({category.colorVar})"
+								title="{category.name}: {formatCurrency(category.amount)}"
+							></div>
+						{/each}
+					</div>
+				{:else}
+					<div class="progress-bar">
+						<div class="progress-segment empty" style="width: 100%"></div>
+					</div>
+				{/if}
+
+				<div class="categories-section">
+					<div class="categories-header">
+						<span>Categories</span>
+						<span>Spent</span>
+					</div>
+					{#if categorySpending.length > 0}
+						{#each categorySpending as category}
+							<div class="category-item">
+								<div class="category-info">
+									<div class="category-dot" style="background-color: var({category.colorVar})"></div>
+									<span class="category-name">{category.name}</span>
+								</div>
+								<span class="category-amount">{formatCurrency(category.amount)}</span>
+							</div>
+						{/each}
+					{:else}
+						<div class="empty-categories">
+							<span>No spending this month</span>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Net Worth Card -->
+			<a href="/reports/net-worth" class="report-card">
 			<div class="card-header">
 				<div class="card-icon blue">
 					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -225,6 +354,7 @@
 			</div>
 		</a>
 	</div>
+	{/if}
 </div>
 
 <style>
@@ -333,16 +463,54 @@
 		margin-bottom: 16px;
 	}
 
-	.progress-fill {
+	/* Progress Bar - Segmented by category */
+	.progress-bar {
+		display: flex;
+		height: 12px;
+		border-radius: 6px;
+		overflow: hidden;
+		margin-bottom: 16px;
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.progress-segment {
 		height: 100%;
+		min-width: 2px;
+		transition: width 0.3s ease;
 	}
 
-	.progress-fill.purple {
-		background-color: var(--color-chart-1);
+	.progress-segment.empty {
+		background-color: var(--color-bg-tertiary);
 	}
 
-	.progress-fill.green {
-		background-color: var(--color-chart-2);
+	/* Month Navigation */
+	.month-nav {
+		display: flex;
+		gap: 4px;
+	}
+
+	.month-nav-btn {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		color: var(--color-text-secondary);
+		transition: background-color 0.2s, color 0.2s;
+	}
+
+	.month-nav-btn:hover {
+		background-color: var(--color-primary);
+		color: var(--color-text-primary);
+	}
+
+	.month-nav-btn svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	/* Categories Section */
@@ -357,6 +525,13 @@
 		font-size: 13px;
 		color: var(--color-text-muted);
 		margin-bottom: 8px;
+	}
+
+	.empty-categories {
+		text-align: center;
+		padding: 20px;
+		color: var(--color-text-muted);
+		font-size: 14px;
 	}
 
 	.category-item {
