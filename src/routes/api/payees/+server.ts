@@ -146,10 +146,10 @@ export const DELETE: RequestHandler = async (event) => {
 			args: [user.userId, name]
 		});
 
-		// Set description to NULL for all transactions with this payee
+		// Set description to empty string for all transactions with this payee
 		// This makes them "unassigned" instead of keeping the deleted payee
 		const updateResult = await db.execute({
-			sql: 'UPDATE transactions SET description = NULL WHERE user_id = ? AND description = ?',
+			sql: "UPDATE transactions SET description = '' WHERE user_id = ? AND description = ?",
 			args: [user.userId, name]
 		});
 
