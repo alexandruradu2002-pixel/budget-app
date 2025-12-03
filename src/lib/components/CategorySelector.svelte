@@ -80,8 +80,17 @@
 	$effect(() => {
 		if (show) {
 			loadCategories();
+			// Add history state so back button closes modal instead of navigating away
+			history.pushState({ categorySelector: true }, '');
 		}
 	});
+
+	// Handle browser back button
+	function handlePopState(event: PopStateEvent) {
+		if (show) {
+			closeModal();
+		}
+	}
 
 	async function loadCategories() {
 		loading = true;
@@ -143,6 +152,10 @@
 	}
 
 	function closeModal() {
+		// Go back in history if we added a state
+		if (history.state?.categorySelector) {
+			history.back();
+		}
 		show = false;
 		searchQuery = '';
 		onClose();
@@ -155,7 +168,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
 {#if show}
 	<div class="modal-overlay">

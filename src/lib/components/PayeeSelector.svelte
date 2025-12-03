@@ -62,8 +62,17 @@
 			// Reset search and load all payees when modal opens
 			searchQuery = '';
 			loadPayees();
+			// Add history state so back button closes modal instead of navigating away
+			history.pushState({ payeeSelector: true }, '');
 		}
 	});
+
+	// Handle browser back button
+	function handlePopState(event: PopStateEvent) {
+		if (show) {
+			closeModal();
+		}
+	}
 
 	// Search with debounce - only trigger when searchQuery changes (not on show)
 	let searchTimeout: ReturnType<typeof setTimeout>;
@@ -222,6 +231,10 @@
 	}
 
 	function closeModal() {
+		// Go back in history if we added a state
+		if (history.state?.payeeSelector) {
+			history.back();
+		}
 		show = false;
 		searchQuery = '';
 		onClose();
@@ -234,7 +247,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
 {#if show}
 	<div class="modal-overlay">

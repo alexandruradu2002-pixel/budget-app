@@ -67,8 +67,17 @@
 	$effect(() => {
 		if (show) {
 			loadAccounts();
+			// Add history state so back button closes modal instead of navigating away
+			history.pushState({ accountSelector: true }, '');
 		}
 	});
+
+	// Handle browser back button
+	function handlePopState(event: PopStateEvent) {
+		if (show) {
+			closeModal();
+		}
+	}
 
 	async function loadAccounts() {
 		loading = true;
@@ -93,6 +102,10 @@
 	}
 
 	function closeModal() {
+		// Go back in history if we added a state
+		if (history.state?.accountSelector) {
+			history.back();
+		}
 		show = false;
 		onClose();
 	}
@@ -116,7 +129,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
 {#if show}
 	<div class="modal-overlay">
