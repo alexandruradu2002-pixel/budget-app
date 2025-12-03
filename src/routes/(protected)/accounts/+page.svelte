@@ -469,7 +469,7 @@
 	.currency-item {
 		font-size: 14px;
 		color: rgba(255, 255, 255, 0.9);
-		font-weight: 500;
+		font-weight: 600;
 	}
 
 	/* Content */
@@ -522,7 +522,7 @@
 
 	.group-total-item {
 		font-size: 14px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-text-primary);
 	}
 
@@ -644,7 +644,7 @@
 
 	.account-balance {
 		font-size: 16px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-success);
 	}
 
