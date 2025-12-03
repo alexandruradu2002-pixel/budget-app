@@ -34,8 +34,7 @@
 		category_id: 0 as number | undefined,
 		notes: '',
 		isInflow: false,
-		isCleared: false,
-		flag: 'none' as 'none' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple'
+		isCleared: false
 	});
 
 	// Transfer state
@@ -121,6 +120,34 @@
 		}
 	}
 
+	// Check URL hash on mount to restore state after reload
+	$effect(() => {
+		if (typeof window !== 'undefined' && window.location.hash === '#transaction-modal') {
+			show = true;
+		}
+	});
+
+	// Update URL hash when modal opens
+	$effect(() => {
+		if (show && typeof window !== 'undefined' && window.location.hash !== '#transaction-modal') {
+			// Only push state if not already a sub-selector hash
+			if (!window.location.hash.includes('-selector')) {
+				history.pushState({ transactionModal: true }, '', '#transaction-modal');
+			}
+		}
+	});
+
+	// Handle browser back button
+	function handlePopState(event: PopStateEvent) {
+		if (show && typeof window !== 'undefined') {
+			// If we're back to no hash or different hash, close modal
+			if (window.location.hash !== '#transaction-modal' && !window.location.hash.includes('-selector')) {
+				show = false;
+				onClose();
+			}
+		}
+	}
+
 	// Initialize form when modal opens or editingTransaction changes
 	$effect(() => {
 		if (show) {
@@ -143,8 +170,7 @@
 					category_id: editingTransaction.category_id,
 					notes: editingTransaction.notes || '',
 					isInflow: editingTransaction.amount >= 0,
-					isCleared: false,
-					flag: 'none'
+					isCleared: false
 				};
 				calcDisplay = amount.toString();
 				isNewInput = false;
@@ -176,8 +202,7 @@
 					category_id: initialCategoryId,
 					notes: '',
 					isInflow: false,
-					isCleared: false,
-					flag: 'none'
+					isCleared: false
 				};
 				calcDisplay = '0';
 				isNewInput = true;
@@ -248,11 +273,28 @@
 	});
 
 	// Handle payee selection (regular payee)
-	function handlePayeeSelect(payee: string) {
+	async function handlePayeeSelect(payee: string) {
 		formData.description = payee;
 		// If a regular payee is selected, clear transfer state
 		isTransfer = false;
 		transferTargetAccountId = null;
+
+		// Check if auto-categorize is enabled
+		const autoCategorize = localStorage.getItem('payee_auto_categorize') === 'true';
+		if (autoCategorize && payee) {
+			try {
+				const res = await fetch(`/api/payees?action=most-frequent-category&payee=${encodeURIComponent(payee)}`);
+				if (res.ok) {
+					const data = await res.json();
+					if (data.category_id) {
+						formData.category_id = data.category_id;
+						selectedCategoryName = data.category_name || '';
+					}
+				}
+			} catch (e) {
+				console.error('Error fetching category for payee:', e);
+			}
+		}
 	}
 
 	// Handle transfer payee selection
@@ -411,9 +453,6 @@
 			payload.memo = formData.notes;
 			payload.notes = formData.notes;
 		}
-		if (formData.flag && formData.flag !== 'none') {
-			payload.flag = formData.flag;
-		}
 
 		// Only include category_id if it's a valid positive number and NOT a transfer
 		if (!isTransfer && formData.category_id && formData.category_id > 0) {
@@ -464,10 +503,16 @@
 
 	// Close modal
 	function closeModal() {
+		// Remove hash and go back in history
+		if (typeof window !== 'undefined' && window.location.hash === '#transaction-modal') {
+			history.back();
+		}
 		show = false;
 		onClose();
 	}
 </script>
+
+<svelte:window onpopstate={handlePopState} />
 
 {#if show}
 	<div class="modal-overlay">
@@ -1432,11 +1477,12 @@
 
 	.delete-confirm-delete {
 		background-color: var(--color-danger);
-		color: white;
+		color: var(--color-text-primary);
 	}
 
 	.delete-confirm-delete:active {
-		background-color: #dc2626;
+		background-color: var(--color-danger);
+		opacity: 0.9;
 		transform: scale(0.98);
 	}
 </style>

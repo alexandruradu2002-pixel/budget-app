@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
 	/* Default theme: Midnight Blue */
@@ -16,6 +14,232 @@
 	--color-success: #10B981;
 	--color-danger: #EF4444;
 	--color-warning: #F59E0B;
+	--color-info: #3B82F6;
+	--color-chart-1: #6366F1;
+	--color-chart-2: #22C55E;
+	--color-chart-3: #F59E0B;
+	--color-chart-4: #EF4444;
+	--color-chart-5: #8B5CF6;
+}
+
+/* Theme: Midnight Blue (default) */
+.theme-midnight-blue {
+	--color-primary: #3B82F6;
+	--color-primary-hover: #2563EB;
+	--color-bg-primary: #0F172A;
+	--color-bg-secondary: #1E293B;
+	--color-bg-tertiary: #334155;
+	--color-text-primary: #F8FAFC;
+	--color-text-secondary: #CBD5E1;
+	--color-text-muted: #94A3B8;
+	--color-border: #334155;
+	--color-success: #10B981;
+	--color-danger: #EF4444;
+	--color-warning: #F59E0B;
+	--color-info: #3B82F6;
+	--color-chart-1: #6366F1;
+	--color-chart-2: #22C55E;
+	--color-chart-3: #F59E0B;
+	--color-chart-4: #EF4444;
+	--color-chart-5: #8B5CF6;
+}
+
+/* Theme: Emerald Dark */
+.theme-emerald-dark {
+	--color-primary: #10B981;
+	--color-primary-hover: #059669;
+	--color-bg-primary: #0D1117;
+	--color-bg-secondary: #161B22;
+	--color-bg-tertiary: #21262D;
+	--color-text-primary: #F0FDF4;
+	--color-text-secondary: #A7F3D0;
+	--color-text-muted: #6EE7B7;
+	--color-border: #30363D;
+	--color-success: #22C55E;
+	--color-danger: #F87171;
+	--color-warning: #FBBF24;
+	--color-info: #34D399;
+	--color-chart-1: #10B981;
+	--color-chart-2: #3B82F6;
+	--color-chart-3: #F59E0B;
+	--color-chart-4: #EF4444;
+	--color-chart-5: #A78BFA;
+}
+
+/* Theme: Sunset Orange */
+.theme-sunset-orange {
+	--color-primary: #F97316;
+	--color-primary-hover: #EA580C;
+	--color-bg-primary: #18181B;
+	--color-bg-secondary: #27272A;
+	--color-bg-tertiary: #3F3F46;
+	--color-text-primary: #FAFAFA;
+	--color-text-secondary: #FED7AA;
+	--color-text-muted: #A1A1AA;
+	--color-border: #52525B;
+	--color-success: #84CC16;
+	--color-danger: #EF4444;
+	--color-warning: #FACC15;
+	--color-info: #FB923C;
+	--color-chart-1: #F97316;
+	--color-chart-2: #EAB308;
+	--color-chart-3: #22C55E;
+	--color-chart-4: #EF4444;
+	--color-chart-5: #06B6D4;
+}
+
+/* Theme: Royal Purple */
+.theme-royal-purple {
+	--color-primary: #8B5CF6;
+	--color-primary-hover: #7C3AED;
+	--color-bg-primary: #1A1625;
+	--color-bg-secondary: #2D2640;
+	--color-bg-tertiary: #3D3556;
+	--color-text-primary: #FAF5FF;
+	--color-text-secondary: #DDD6FE;
+	--color-text-muted: #A78BFA;
+	--color-border: #4C4270;
+	--color-success: #4ADE80;
+	--color-danger: #F87171;
+	--color-warning: #FCD34D;
+	--color-info: #A78BFA;
+	--color-chart-1: #8B5CF6;
+	--color-chart-2: #EC4899;
+	--color-chart-3: #22C55E;
+	--color-chart-4: #F59E0B;
+	--color-chart-5: #06B6D4;
+}
+
+/* Theme: Ocean Teal */
+.theme-ocean-teal {
+	--color-primary: #14B8A6;
+	--color-primary-hover: #0D9488;
+	--color-bg-primary: #0F1419;
+	--color-bg-secondary: #1A2332;
+	--color-bg-tertiary: #243447;
+	--color-text-primary: #F0FDFA;
+	--color-text-secondary: #99F6E4;
+	--color-text-muted: #5EEAD4;
+	--color-border: #2F4156;
+	--color-success: #22D3EE;
+	--color-danger: #FB7185;
+	--color-warning: #FDE047;
+	--color-info: #2DD4BF;
+	--color-chart-1: #14B8A6;
+	--color-chart-2: #0EA5E9;
+	--color-chart-3: #A3E635;
+	--color-chart-4: #FB7185;
+	--color-chart-5: #C084FC;
+}
+
+/* Theme: Rose Pink */
+.theme-rose-pink {
+	--color-primary: #EC4899;
+	--color-primary-hover: #DB2777;
+	--color-bg-primary: #1A1018;
+	--color-bg-secondary: #2D1F2B;
+	--color-bg-tertiary: #3D2D3A;
+	--color-text-primary: #FDF2F8;
+	--color-text-secondary: #FBCFE8;
+	--color-text-muted: #F9A8D4;
+	--color-border: #4C3A48;
+	--color-success: #4ADE80;
+	--color-danger: #F87171;
+	--color-warning: #FCD34D;
+	--color-info: #F472B6;
+	--color-chart-1: #EC4899;
+	--color-chart-2: #A855F7;
+	--color-chart-3: #22C55E;
+	--color-chart-4: #F59E0B;
+	--color-chart-5: #06B6D4;
+}
+
+/* Theme: Cyber Neon */
+.theme-cyber-neon {
+	--color-primary: #00FF88;
+	--color-primary-hover: #00CC6A;
+	--color-bg-primary: #0A0A0F;
+	--color-bg-secondary: #12121A;
+	--color-bg-tertiary: #1A1A25;
+	--color-text-primary: #E0FFE0;
+	--color-text-secondary: #88FF88;
+	--color-text-muted: #66CC66;
+	--color-border: #2A2A35;
+	--color-success: #00FF88;
+	--color-danger: #FF4444;
+	--color-warning: #FFCC00;
+	--color-info: #00CCFF;
+	--color-chart-1: #00FF88;
+	--color-chart-2: #FF00FF;
+	--color-chart-3: #FFCC00;
+	--color-chart-4: #FF4444;
+	--color-chart-5: #00CCFF;
+}
+
+/* Theme: Coffee Brown */
+.theme-coffee-brown {
+	--color-primary: #D97706;
+	--color-primary-hover: #B45309;
+	--color-bg-primary: #1C1410;
+	--color-bg-secondary: #2A201A;
+	--color-bg-tertiary: #3D3028;
+	--color-text-primary: #FEF3C7;
+	--color-text-secondary: #FDE68A;
+	--color-text-muted: #D4A574;
+	--color-border: #4D3D30;
+	--color-success: #84CC16;
+	--color-danger: #EF4444;
+	--color-warning: #FBBF24;
+	--color-info: #F59E0B;
+	--color-chart-1: #D97706;
+	--color-chart-2: #92400E;
+	--color-chart-3: #84CC16;
+	--color-chart-4: #EF4444;
+	--color-chart-5: #06B6D4;
+}
+
+/* Theme: Arctic Blue */
+.theme-arctic-blue {
+	--color-primary: #38BDF8;
+	--color-primary-hover: #0EA5E9;
+	--color-bg-primary: #0C1929;
+	--color-bg-secondary: #132337;
+	--color-bg-tertiary: #1E3A50;
+	--color-text-primary: #F0F9FF;
+	--color-text-secondary: #BAE6FD;
+	--color-text-muted: #7DD3FC;
+	--color-border: #2A4A65;
+	--color-success: #4ADE80;
+	--color-danger: #FB7185;
+	--color-warning: #FDE047;
+	--color-info: #38BDF8;
+	--color-chart-1: #38BDF8;
+	--color-chart-2: #818CF8;
+	--color-chart-3: #4ADE80;
+	--color-chart-4: #FB7185;
+	--color-chart-5: #FBBF24;
+}
+
+/* Theme: Dracula */
+.theme-dracula {
+	--color-primary: #BD93F9;
+	--color-primary-hover: #A370F7;
+	--color-bg-primary: #282A36;
+	--color-bg-secondary: #343746;
+	--color-bg-tertiary: #44475A;
+	--color-text-primary: #F8F8F2;
+	--color-text-secondary: #E9E9E4;
+	--color-text-muted: #6272A4;
+	--color-border: #44475A;
+	--color-success: #50FA7B;
+	--color-danger: #FF5555;
+	--color-warning: #F1FA8C;
+	--color-info: #8BE9FD;
+	--color-chart-1: #BD93F9;
+	--color-chart-2: #FF79C6;
+	--color-chart-3: #50FA7B;
+	--color-chart-4: #FF5555;
+	--color-chart-5: #8BE9FD;
 }
 
 * {

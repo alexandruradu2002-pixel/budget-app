@@ -100,7 +100,6 @@ export const POST: RequestHandler = async (event) => {
 	const category_id = data.category_id ?? null;
 	const payee = data.payee ?? null;
 	const memo = data.memo ?? null;
-	const flag = data.flag ?? null;
 	const cleared = data.cleared ?? 'uncleared';
 	const notes = data.notes ?? null;
 	const tags = data.tags ? JSON.stringify(data.tags) : null;
@@ -136,17 +135,17 @@ export const POST: RequestHandler = async (event) => {
 		// Create outflow transaction (from source account)
 		const outflowDescription = `Transfer to: ${targetAccountName}`;
 		const outflowResult = await db.execute({
-			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, transfer_account_id)
-				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			args: [user.userId, account_id, -Math.abs(amount), outflowDescription, date, outflowDescription, memo, flag, cleared, notes, tags, transferAccountId]
+			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, transfer_account_id)
+				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			args: [user.userId, account_id, -Math.abs(amount), outflowDescription, date, outflowDescription, memo, cleared, notes, tags, transferAccountId]
 		});
 
 		// Create inflow transaction (to target account)
 		const inflowDescription = `Transfer from: ${sourceAccountName}`;
 		const inflowResult = await db.execute({
-			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, transfer_account_id)
-				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			args: [user.userId, transferAccountId, Math.abs(amount), inflowDescription, date, inflowDescription, memo, flag, cleared, notes, tags, account_id]
+			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, transfer_account_id)
+				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			args: [user.userId, transferAccountId, Math.abs(amount), inflowDescription, date, inflowDescription, memo, cleared, notes, tags, account_id]
 		});
 
 		// Update source account balance (decrease)
@@ -170,9 +169,9 @@ export const POST: RequestHandler = async (event) => {
 
 	// Regular transaction (non-transfer)
 	const result = await db.execute({
-		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags)
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		args: [user.userId, account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags]
+		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags]
 	});
 
 	// Update account balance
@@ -215,7 +214,6 @@ export const PUT: RequestHandler = async (event) => {
 	const category_id = parsed.data.category_id ?? null;
 	const payee = parsed.data.payee ?? null;
 	const memo = parsed.data.memo ?? null;
-	const flag = parsed.data.flag ?? null;
 	const cleared = parsed.data.cleared ?? 'uncleared';
 	const notes = parsed.data.notes ?? null;
 	const tags = parsed.data.tags ? JSON.stringify(parsed.data.tags) : null;
@@ -230,9 +228,9 @@ export const PUT: RequestHandler = async (event) => {
 	await db.execute({
 		sql: `UPDATE transactions 
 			  SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, 
-				  payee = ?, memo = ?, flag = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+				  payee = ?, memo = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND user_id = ?`,
-		args: [account_id, category_id, amount, description, date, payee, memo, flag, cleared, notes, tags, id, user.userId]
+		args: [account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, id, user.userId]
 	});
 
 	// Apply new balance

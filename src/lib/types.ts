@@ -73,7 +73,6 @@ export interface Transaction {
 	date: string; // YYYY-MM-DD
 	payee?: string; // YNAB payee field
 	memo?: string; // YNAB memo field
-	flag?: string; // YNAB flag color
 	cleared?: ClearedStatus; // YNAB cleared status
 	transfer_account_id?: number; // For transfer transactions
 	notes?: string;

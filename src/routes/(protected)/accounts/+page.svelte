@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
-	import { formatCurrency, formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
+	import { formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
 	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
 	import { currencyStore } from '$lib/stores';
 
@@ -148,7 +148,7 @@
 	// Check if we have multiple currencies
 	let hasMultipleCurrencies = $derived(currencyTotals.length > 1);
 
-	// Format account balance with its currency
+	// Format account balance with its currency (no decimals)
 	function formatAccountBalance(account: Account): string {
 		const currency = account.currency || 'RON';
 		return formatWithCurrency(account.balance, currency);
@@ -265,7 +265,7 @@
 		<!-- Total Balance Header -->
 		<div class="total-balance-section">
 			<span class="total-label">Total Balance</span>
-			<span class="total-amount">{formatCurrency(totalBalanceRON)}</span>
+			<span class="total-amount">{formatWithCurrency(totalBalanceRON, 'RON')}</span>
 			
 			{#if hasMultipleCurrencies}
 				<div class="currency-breakdown">

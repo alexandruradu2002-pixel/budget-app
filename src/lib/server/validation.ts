@@ -52,7 +52,6 @@ export const transactionSchema = z.object({
 	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
 	payee: z.string().optional(),
 	memo: z.string().optional(),
-	flag: z.string().optional(),
 	cleared: z.enum(['cleared', 'uncleared', 'reconciled']).optional(),
 	is_transfer: z.boolean().optional(),
 	transfer_account_id: z.number().int().positive().optional(),

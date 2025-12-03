@@ -63,19 +63,29 @@
 		return groups;
 	});
 
+	// Check URL hash on mount to restore state after reload
+	$effect(() => {
+		if (typeof window !== 'undefined' && window.location.hash === '#account-selector') {
+			show = true;
+		}
+	});
+
 	// Load accounts when modal opens
 	$effect(() => {
 		if (show) {
 			loadAccounts();
-			// Add history state so back button closes modal instead of navigating away
-			history.pushState({ accountSelector: true }, '');
+			// Update URL hash so reload keeps the modal open
+			if (typeof window !== 'undefined' && window.location.hash !== '#account-selector') {
+				history.pushState({ accountSelector: true }, '', '#account-selector');
+			}
 		}
 	});
 
 	// Handle browser back button
 	function handlePopState(event: PopStateEvent) {
-		if (show) {
-			closeModal();
+		if (show && window.location.hash !== '#account-selector') {
+			show = false;
+			onClose();
 		}
 	}
 
@@ -102,8 +112,8 @@
 	}
 
 	function closeModal() {
-		// Go back in history if we added a state
-		if (history.state?.accountSelector) {
+		// Remove hash and go back in history
+		if (typeof window !== 'undefined' && window.location.hash === '#account-selector') {
 			history.back();
 		}
 		show = false;

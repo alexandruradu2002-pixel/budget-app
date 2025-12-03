@@ -334,7 +334,7 @@
 	.account-type-badge {
 		font-size: 12px;
 		font-weight: 500;
-		color: rgba(255, 255, 255, 0.8);
+		color: var(--color-text-secondary);
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 		margin-bottom: 8px;
@@ -343,16 +343,16 @@
 	.account-balance {
 		font-size: 32px;
 		font-weight: 700;
-		color: white;
+		color: var(--color-text-primary);
 	}
 
 	.account-balance.negative {
-		color: #fca5a5;
+		color: var(--color-danger);
 	}
 
 	.account-currency-note {
 		font-size: 14px;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--color-text-muted);
 		margin-top: 4px;
 	}
 

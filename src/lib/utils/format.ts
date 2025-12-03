@@ -21,13 +21,12 @@ function isPrefixSymbol(symbol: string): boolean {
 
 /**
  * Format a number with any currency (supports all currencies in ALL_CURRENCY_SYMBOLS)
+ * No decimals, uses floor rounding
  */
 export function formatWithCurrency(amount: number, currency: string): string {
 	const symbol = getCurrencySymbol(currency);
-	const formatted = amount.toLocaleString('ro-RO', { 
-		minimumFractionDigits: 2, 
-		maximumFractionDigits: 2 
-	});
+	const floored = Math.floor(amount);
+	const formatted = floored.toLocaleString('ro-RO');
 	
 	if (isPrefixSymbol(symbol)) {
 		return `${symbol}${formatted}`;
@@ -37,14 +36,12 @@ export function formatWithCurrency(amount: number, currency: string): string {
 
 /**
  * Format amount with currency, showing sign for negative values
+ * No decimals, uses floor rounding
  */
 export function formatAmountWithCurrency(amount: number, currency: string): string {
 	const symbol = getCurrencySymbol(currency);
-	const absAmount = Math.abs(amount);
-	const formatted = absAmount.toLocaleString('ro-RO', { 
-		minimumFractionDigits: 2, 
-		maximumFractionDigits: 2 
-	});
+	const absAmount = Math.floor(Math.abs(amount));
+	const formatted = absAmount.toLocaleString('ro-RO');
 	const sign = amount < 0 ? '-' : '';
 	
 	if (isPrefixSymbol(symbol)) {
@@ -55,36 +52,31 @@ export function formatAmountWithCurrency(amount: number, currency: string): stri
 
 /**
  * Format a number as currency using the main currency from store
+ * No decimals, uses floor rounding
  */
 export function formatCurrency(amount: number, currency?: CurrencyValue): string {
 	const curr = currency || currencyStore.value;
 	const symbol = CURRENCY_SYMBOLS[curr];
+	const floored = Math.floor(amount);
 	
 	// For EUR, USD, GBP put symbol before amount
 	if (curr !== 'RON') {
-		return symbol + amount.toLocaleString('ro-RO', { 
-			minimumFractionDigits: 2, 
-			maximumFractionDigits: 2 
-		});
+		return symbol + floored.toLocaleString('ro-RO');
 	}
 	
 	// For RON (lei), put symbol after amount
-	return amount.toLocaleString('ro-RO', { 
-		minimumFractionDigits: 2, 
-		maximumFractionDigits: 2 
-	}) + ' ' + symbol;
+	return floored.toLocaleString('ro-RO') + ' ' + symbol;
 }
 
 /**
  * Format a number as currency with sign (+ or -)
+ * No decimals, uses floor rounding
  */
 export function formatCurrencyWithSign(amount: number, currency?: CurrencyValue): string {
 	const curr = currency || currencyStore.value;
 	const symbol = CURRENCY_SYMBOLS[curr];
-	const formatted = Math.abs(amount).toLocaleString('ro-RO', { 
-		minimumFractionDigits: 2, 
-		maximumFractionDigits: 2 
-	});
+	const floored = Math.floor(Math.abs(amount));
+	const formatted = floored.toLocaleString('ro-RO');
 	const sign = amount >= 0 ? '+' : '-';
 	
 	// For EUR, USD, GBP put symbol before amount
@@ -98,11 +90,13 @@ export function formatCurrencyWithSign(amount: number, currency?: CurrencyValue)
 
 /**
  * Format amount for transactions (negative amounts show as positive with minus)
+ * No decimals, uses floor rounding
  */
 export function formatAmount(amount: number, currency?: CurrencyValue): string {
 	const curr = currency || currencyStore.value;
 	const symbol = CURRENCY_SYMBOLS[curr];
-	const formatted = Math.abs(amount).toFixed(2);
+	const floored = Math.floor(Math.abs(amount));
+	const formatted = floored.toLocaleString('ro-RO');
 	const sign = amount < 0 ? '-' : '';
 	
 	// For EUR, USD, GBP put symbol before amount

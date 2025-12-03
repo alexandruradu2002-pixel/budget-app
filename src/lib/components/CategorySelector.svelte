@@ -76,19 +76,30 @@
 		return groups;
 	});
 
+	// Check URL hash on mount to restore state after reload
+	$effect(() => {
+		if (typeof window !== 'undefined' && window.location.hash === '#category-selector') {
+			show = true;
+		}
+	});
+
 	// Load categories when modal opens
 	$effect(() => {
 		if (show) {
 			loadCategories();
-			// Add history state so back button closes modal instead of navigating away
-			history.pushState({ categorySelector: true }, '');
+			// Update URL hash so reload keeps the modal open
+			if (typeof window !== 'undefined' && window.location.hash !== '#category-selector') {
+				history.pushState({ categorySelector: true }, '', '#category-selector');
+			}
 		}
 	});
 
 	// Handle browser back button
 	function handlePopState(event: PopStateEvent) {
-		if (show) {
-			closeModal();
+		if (show && window.location.hash !== '#category-selector') {
+			show = false;
+			searchQuery = '';
+			onClose();
 		}
 	}
 
@@ -152,8 +163,8 @@
 	}
 
 	function closeModal() {
-		// Go back in history if we added a state
-		if (history.state?.categorySelector) {
+		// Remove hash and go back in history
+		if (typeof window !== 'undefined' && window.location.hash === '#category-selector') {
 			history.back();
 		}
 		show = false;

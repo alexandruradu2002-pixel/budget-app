@@ -4,11 +4,49 @@ import { requireAuth } from '$lib/server/middleware';
 import db from '$lib/server/db';
 
 // GET /api/payees - Get all distinct payees for the user (from both payees table and transactions)
+// Query params:
+//   - search: filter by name
+//   - action=most-frequent-category&payee=<name>: get the most frequently used category for a payee
 export const GET: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 
 	const url = event.url;
+	const action = url.searchParams.get('action');
 	const search = url.searchParams.get('search') || '';
+
+	// Handle most-frequent-category action
+	if (action === 'most-frequent-category') {
+		const payeeName = url.searchParams.get('payee');
+		if (!payeeName) {
+			return json({ error: 'Payee name is required' }, { status: 400 });
+		}
+
+		// Find the most frequently used category for this payee
+		const result = await db.execute({
+			sql: `
+				SELECT t.category_id, c.name as category_name, COUNT(*) as count
+				FROM transactions t
+				LEFT JOIN categories c ON t.category_id = c.id
+				WHERE t.user_id = ? AND t.description = ? AND t.category_id IS NOT NULL
+				GROUP BY t.category_id
+				ORDER BY count DESC
+				LIMIT 1
+			`,
+			args: [user.userId, payeeName]
+		});
+
+		if (result.rows.length === 0) {
+			return json({ category_id: null, category_name: null });
+		}
+
+		const row = result.rows[0];
+		return json({
+			category_id: row.category_id as number,
+			category_name: row.category_name as string
+		});
+	}
+
+	// Query payees from both the payees table and transaction descriptions
 
 	// Query payees from both the payees table and transaction descriptions
 	// Using UNION to combine and deduplicate
@@ -99,27 +137,42 @@ export const PUT: RequestHandler = async (event) => {
 	}
 
 	try {
-		// Update in payees table
-		await db.execute({
-			sql: 'UPDATE payees SET name = ? WHERE user_id = ? AND name = ?',
-			args: [newName, user.userId, oldName]
-		});
-
-		// Also insert if it didn't exist in payees table (was only from transactions)
-		await db.execute({
-			sql: 'INSERT OR IGNORE INTO payees (user_id, name) VALUES (?, ?)',
+		// Check if newName already exists (this will be a merge operation)
+		const existingPayee = await db.execute({
+			sql: 'SELECT name FROM payees WHERE user_id = ? AND name = ?',
 			args: [user.userId, newName]
 		});
+		
+		// Also check if it exists as a transaction description
+		const existingTransaction = await db.execute({
+			sql: 'SELECT description FROM transactions WHERE user_id = ? AND description = ? LIMIT 1',
+			args: [user.userId, newName]
+		});
+		
+		const isMerge = existingPayee.rows.length > 0 || existingTransaction.rows.length > 0;
 
-		// Update all transactions with this payee
+		// Update all transactions with the old payee name to the new name
 		const updateResult = await db.execute({
 			sql: 'UPDATE transactions SET description = ? WHERE user_id = ? AND description = ?',
 			args: [newName, user.userId, oldName]
 		});
 
+		// Delete the old payee from payees table (it's now merged or renamed)
+		await db.execute({
+			sql: 'DELETE FROM payees WHERE user_id = ? AND name = ?',
+			args: [user.userId, oldName]
+		});
+
+		// Insert the new payee name if it doesn't exist
+		await db.execute({
+			sql: 'INSERT OR IGNORE INTO payees (user_id, name) VALUES (?, ?)',
+			args: [user.userId, newName]
+		});
+
 		return json({ 
 			success: true, 
-			message: 'Payee renamed',
+			message: isMerge ? 'Payees merged' : 'Payee renamed',
+			merged: isMerge,
 			transactionsUpdated: updateResult.rowsAffected || 0
 		});
 	} catch (error) {

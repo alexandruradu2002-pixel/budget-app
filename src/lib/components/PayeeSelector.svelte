@@ -56,21 +56,32 @@
 		accounts.filter(a => a.is_active && a.id !== currentAccountId)
 	);
 
+	// Check URL hash on mount to restore state after reload
+	$effect(() => {
+		if (typeof window !== 'undefined' && window.location.hash === '#payee-selector') {
+			show = true;
+		}
+	});
+
 	// Load payees when modal opens
 	$effect(() => {
 		if (show) {
 			// Reset search and load all payees when modal opens
 			searchQuery = '';
 			loadPayees();
-			// Add history state so back button closes modal instead of navigating away
-			history.pushState({ payeeSelector: true }, '');
+			// Update URL hash so reload keeps the modal open
+			if (typeof window !== 'undefined' && window.location.hash !== '#payee-selector') {
+				history.pushState({ payeeSelector: true }, '', '#payee-selector');
+			}
 		}
 	});
 
 	// Handle browser back button
 	function handlePopState(event: PopStateEvent) {
-		if (show) {
-			closeModal();
+		if (show && window.location.hash !== '#payee-selector') {
+			show = false;
+			searchQuery = '';
+			onClose();
 		}
 	}
 
@@ -176,11 +187,28 @@
 
 	function toggleMenu(name: string, event: Event) {
 		event.stopPropagation();
-		openMenuPayee = openMenuPayee === name ? null : name;
+		if (openMenuPayee === name) {
+			openMenuPayee = null;
+			menuPosition = 'below';
+		} else {
+			// Calculate if menu should appear above or below
+			const button = event.currentTarget as HTMLElement;
+			const rect = button.getBoundingClientRect();
+			const viewportHeight = window.innerHeight;
+			const spaceBelow = viewportHeight - rect.bottom;
+			const menuHeight = 100; // Approximate menu height
+			
+			menuPosition = spaceBelow < menuHeight ? 'above' : 'below';
+			openMenuPayee = name;
+		}
 	}
+
+	// Menu position state
+	let menuPosition = $state<'above' | 'below'>('below');
 
 	function closeMenu() {
 		openMenuPayee = null;
+		menuPosition = 'below';
 	}
 
 	function openEditModal(name: string, event: Event) {
@@ -231,8 +259,8 @@
 	}
 
 	function closeModal() {
-		// Go back in history if we added a state
-		if (history.state?.payeeSelector) {
+		// Remove hash and go back in history
+		if (typeof window !== 'undefined' && window.location.hash === '#payee-selector') {
 			history.back();
 		}
 		show = false;
@@ -394,7 +422,7 @@
 											</svg>
 										</button>
 										{#if openMenuPayee === payee.name}
-											<div class="dropdown-menu">
+											<div class="dropdown-menu" class:above={menuPosition === 'above'}>
 												<button class="dropdown-item" onclick={(e) => openEditModal(payee.name, e)}>
 													<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 														<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -757,6 +785,12 @@
 		z-index: 350;
 		min-width: 140px;
 		overflow: hidden;
+	}
+
+	.dropdown-menu.above {
+		top: auto;
+		bottom: 100%;
+		margin-bottom: 4px;
 	}
 
 	.dropdown-item {

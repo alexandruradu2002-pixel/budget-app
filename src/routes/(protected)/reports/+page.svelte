@@ -16,8 +16,8 @@
 	const spendingPercent = (spendingTotal / spendingBudget) * 100;
 	
 	const topCategories = [
-		{ name: 'Restaurant/Cantina', amount: 300.00, color: '#6366F1' },
-		{ name: 'SuperMarchet', amount: 49.00, color: '#22C55E' }
+		{ name: 'Restaurant/Cantina', amount: 300.00, colorVar: '--color-chart-1' },
+		{ name: 'SuperMarchet', amount: 49.00, colorVar: '--color-chart-2' }
 	];
 
 	const netWorth = 15341.44;
@@ -94,7 +94,7 @@
 				{#each topCategories as category}
 					<div class="category-item">
 						<div class="category-info">
-							<div class="category-dot" style="background-color: {category.color}"></div>
+							<div class="category-dot" style="background-color: var({category.colorVar})"></div>
 							<span class="category-name">{category.name}</span>
 						</div>
 						<span class="category-amount">{formatCurrency(category.amount)}</span>
@@ -182,8 +182,8 @@
 					<svg class="area-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
 						<defs>
 							<linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-								<stop offset="0%" style="stop-color:#22C55E;stop-opacity:0.4" />
-								<stop offset="100%" style="stop-color:#22C55E;stop-opacity:0.1" />
+								<stop offset="0%" class="gradient-start" />
+								<stop offset="100%" class="gradient-end" />
 							</linearGradient>
 						</defs>
 						<path
@@ -195,8 +195,8 @@
 							fill="url(#areaGradient)"
 						/>
 						<polyline
+							class="area-line"
 							fill="none"
-							stroke="#22C55E"
 							stroke-width="2"
 							vector-effect="non-scaling-stroke"
 							points="{ageHistory.map((item, i) => {
@@ -275,7 +275,7 @@
 	}
 
 	.card-icon.purple {
-		background-color: #6366F1;
+		background-color: var(--color-chart-1);
 	}
 
 	.card-icon.blue {
@@ -283,13 +283,13 @@
 	}
 
 	.card-icon.green {
-		background-color: #22C55E;
+		background-color: var(--color-success);
 	}
 
 	.card-icon svg {
 		width: 16px;
 		height: 16px;
-		color: white;
+		color: var(--color-text-primary);
 	}
 
 	.card-title {
@@ -338,11 +338,11 @@
 	}
 
 	.progress-fill.purple {
-		background-color: #6366F1;
+		background-color: var(--color-chart-1);
 	}
 
 	.progress-fill.green {
-		background-color: #22C55E;
+		background-color: var(--color-chart-2);
 	}
 
 	/* Categories Section */
@@ -456,7 +456,7 @@
 
 	.bar {
 		width: 24px;
-		background-color: #6366F1;
+		background-color: var(--color-chart-1);
 		border-radius: 4px 4px 0 0;
 		position: relative;
 		margin-top: auto;
@@ -474,7 +474,7 @@
 		transform: translateX(-50%);
 		width: 12px;
 		height: 12px;
-		background-color: white;
+		background-color: var(--color-text-primary);
 		border-radius: 50%;
 		border: 2px solid var(--color-bg-secondary);
 	}
@@ -514,7 +514,7 @@
 	.area-dot {
 		width: 12px;
 		height: 12px;
-		background-color: #22C55E;
+		background-color: var(--color-success);
 		border-radius: 50%;
 		border: 2px solid var(--color-bg-secondary);
 	}
@@ -526,7 +526,7 @@
 		transform: translateX(-50%);
 		width: 2px;
 		height: 48px;
-		border-left: 2px dashed #22C55E;
+		border-left: 2px dashed var(--color-success);
 	}
 
 	.area-labels {
@@ -540,5 +540,20 @@
 
 	.area-labels .highlight {
 		color: var(--color-primary);
+	}
+
+	/* SVG Gradient and Line colors */
+	.gradient-start {
+		stop-color: var(--color-success);
+		stop-opacity: 0.4;
+	}
+
+	.gradient-end {
+		stop-color: var(--color-success);
+		stop-opacity: 0.1;
+	}
+
+	.area-line {
+		stroke: var(--color-success);
 	}
 </style>

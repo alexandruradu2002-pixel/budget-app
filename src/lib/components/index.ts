@@ -23,3 +23,5 @@ export { default as AccountSelector } from './AccountSelector.svelte';
 // Settings Components
 export { default as YNABImport } from './settings/YNABImport.svelte';
 export { default as CurrencySettings } from './settings/CurrencySettings.svelte';
+export { default as PayeeSettings } from './settings/PayeeSettings.svelte';
+export { default as ThemeSettings } from './settings/ThemeSettings.svelte';

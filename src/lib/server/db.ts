@@ -33,9 +33,17 @@ export async function initializeDatabase() {
 			name TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
 			roles TEXT DEFAULT '["user"]',
+			theme TEXT DEFAULT 'midnight-blue',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`);
+
+	// Add theme column if it doesn't exist (migration for existing databases)
+	try {
+		await db.execute(`ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'midnight-blue'`);
+	} catch {
+		// Column already exists, ignore error
+	}
 
 	// Sessions table
 	await db.execute(`
@@ -101,7 +109,6 @@ export async function initializeDatabase() {
 			date TEXT NOT NULL,
 			payee TEXT,
 			memo TEXT,
-			flag TEXT,
 			cleared TEXT CHECK(cleared IN ('cleared', 'uncleared', 'reconciled')),
 			transfer_account_id INTEGER,
 			notes TEXT,
@@ -259,13 +266,6 @@ export async function initializeDatabase() {
 	try {
 		await db.execute('ALTER TABLE transactions ADD COLUMN memo TEXT');
 		console.log('✅ Added memo column to transactions');
-	} catch {
-		// Column already exists, ignore
-	}
-
-	try {
-		await db.execute('ALTER TABLE transactions ADD COLUMN flag TEXT');
-		console.log('✅ Added flag column to transactions');
 	} catch {
 		// Column already exists, ignore
 	}

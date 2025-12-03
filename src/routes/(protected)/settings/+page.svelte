@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, Button } from '$lib/components';
+	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, PayeeSettings, Button, ThemeSettings } from '$lib/components';
 	import { toast } from '$lib/stores';
 	import { goto } from '$app/navigation';
 	
@@ -106,8 +106,14 @@
 	<PageHeader title="Settings" />
 
 	<div class="settings-content">
+		<!-- Theme Settings Section -->
+		<ThemeSettings />
+
 		<!-- Currency Settings Section -->
 		<CurrencySettings />
+
+		<!-- Payee Settings Section -->
+		<PayeeSettings />
 
 		<!-- YNAB Import Section -->
 		<YNABImport />
@@ -349,7 +355,7 @@
 		gap: 0.5rem;
 		padding: 0.75rem;
 		background: var(--color-warning);
-		color: #000;
+		color: var(--color-bg-primary);
 		border-radius: 0.5rem;
 		margin-bottom: 1rem;
 		font-size: 0.85rem;
