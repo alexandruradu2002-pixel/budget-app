@@ -1,21 +1,11 @@
 import type { Handle } from '@sveltejs/kit';
 import { seedDatabase } from '$lib/server/seed';
-
-// LOGIN DISABLED: Single user mode - always authenticated as admin
-// To re-enable login, uncomment the session logic below
+import { getSession, extendSession } from '$lib/server/auth';
 
 let seeded = false;
 
 export const handle: Handle = async ({ event, resolve }) => {
-	// Always authenticate as the single user (login disabled)
-	event.locals.user = {
-		userId: 1,
-		email: 'alex@budget.app',
-		name: 'Alex',
-		roles: ['admin', 'user']
-	};
-
-	// Seed database on first request (dev mode only)
+	// Seed database on first request
 	if (!seeded) {
 		seeded = true;
 		try {
@@ -25,9 +15,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	/* ORIGINAL SESSION LOGIC - Uncomment to re-enable login:
-	import { getSession, extendSession } from '$lib/server/auth';
-	
+	// Check for valid session
 	const sessionId = event.cookies.get('session');
 
 	if (sessionId) {
@@ -39,12 +27,33 @@ export const handle: Handle = async ({ event, resolve }) => {
 				name: session.name,
 				roles: session.roles
 			};
+			// Extend session (sliding expiration)
 			await extendSession(sessionId);
 		} else {
+			// Invalid/expired session - clear the cookie
 			event.cookies.delete('session', { path: '/' });
 		}
 	}
-	*/
+
+	// Protected routes - redirect to login if not authenticated
+	const protectedPaths = ['/dashboard', '/accounts', '/plan', '/spending', '/reports', '/settings'];
+	const isProtectedRoute = protectedPaths.some(path => event.url.pathname.startsWith(path));
+	const isApiRoute = event.url.pathname.startsWith('/api/');
+	
+	if (isProtectedRoute && !event.locals.user) {
+		return new Response(null, {
+			status: 302,
+			headers: { Location: '/login' }
+		});
+	}
+
+	// API routes (except auth) require authentication
+	if (isApiRoute && !event.url.pathname.startsWith('/api/auth/') && !event.locals.user) {
+		return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+			status: 401,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
 
 	return resolve(event);
 };

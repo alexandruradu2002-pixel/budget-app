@@ -37,3 +37,4 @@ Thumbs.db
 # GitHub - keep copilot instructions
 .github/*
 !.github/copilot-instructions.md
+.env*.local

@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, Button } from '$lib/components';
 	import { toast } from '$lib/stores';
+	import { goto } from '$app/navigation';
 	
 	let recalculating = $state(false);
 	let exportingJSON = $state(false);
 	let exportingCSV = $state(false);
+	let loggingOut = $state(false);
 	
 	// Check last backup date from localStorage
 	let lastBackupDate = $state<string | null>(null);
@@ -85,6 +87,17 @@
 			toast.error(`Eroare la export: ${err instanceof Error ? err.message : 'Unknown error'}`);
 		} finally {
 			done();
+		}
+	}
+
+	async function handleLogout() {
+		loggingOut = true;
+		try {
+			await fetch('/api/auth/logout', { method: 'POST' });
+			goto('/login');
+		} catch (err) {
+			toast.error('Failed to logout');
+			loggingOut = false;
 		}
 	}
 </script>
@@ -232,6 +245,32 @@
 			</div>
 		</SettingsSection>
 
+		<!-- Logout Section -->
+		<SettingsSection title="Account" description="Manage your session">
+			{#snippet icon()}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+					/>
+				</svg>
+			{/snippet}
+
+			<div class="logout-section">
+				<p class="logout-info">Session is active. You can logout to require password again.</p>
+				<Button 
+					variant="danger" 
+					onclick={handleLogout} 
+					loading={loggingOut}
+					disabled={loggingOut}
+				>
+					{loggingOut ? 'Logging out...' : '🚪 Logout'}
+				</Button>
+			</div>
+		</SettingsSection>
+
 		<!-- Future sections can be added here -->
 		<!-- <ThemeSettings /> -->
 		<!-- <AccountSettings /> -->
@@ -360,6 +399,21 @@
 		font-size: 0.8rem;
 		color: var(--color-success);
 		text-align: center;
+	}
+
+	.logout-section {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem;
+		text-align: center;
+	}
+
+	.logout-info {
+		margin: 0;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
 	}
 
 	/* Responsive */
