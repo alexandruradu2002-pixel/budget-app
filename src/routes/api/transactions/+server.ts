@@ -18,7 +18,36 @@ export const GET: RequestHandler = async (event) => {
 	const accountId = params.getInt('accountId');
 	const categoryId = params.getInt('categoryId');
 
-	let sql = `
+	// Build WHERE clause for filtering
+	let whereClause = 't.user_id = ?';
+	const filterArgs: InValue[] = [user.userId];
+
+	if (startDate) {
+		whereClause += ' AND t.date >= ?';
+		filterArgs.push(startDate);
+	}
+	if (endDate) {
+		whereClause += ' AND t.date <= ?';
+		filterArgs.push(endDate);
+	}
+	if (accountId) {
+		whereClause += ' AND t.account_id = ?';
+		filterArgs.push(accountId);
+	}
+	if (categoryId) {
+		whereClause += ' AND t.category_id = ?';
+		filterArgs.push(categoryId);
+	}
+
+	// Get total count
+	const countResult = await db.execute({
+		sql: `SELECT COUNT(*) as total FROM transactions t WHERE ${whereClause}`,
+		args: filterArgs
+	});
+	const total = Number(countResult.rows[0].total);
+
+	// Get transactions with pagination
+	const sql = `
 		SELECT 
 			t.*,
 			a.name as account_name,
@@ -28,29 +57,10 @@ export const GET: RequestHandler = async (event) => {
 		FROM transactions t
 		LEFT JOIN accounts a ON t.account_id = a.id
 		LEFT JOIN categories c ON t.category_id = c.id
-		WHERE t.user_id = ?
+		WHERE ${whereClause}
+		ORDER BY t.date DESC, t.id DESC LIMIT ? OFFSET ?
 	`;
-	const args: InValue[] = [user.userId];
-
-	if (startDate) {
-		sql += ' AND t.date >= ?';
-		args.push(startDate);
-	}
-	if (endDate) {
-		sql += ' AND t.date <= ?';
-		args.push(endDate);
-	}
-	if (accountId) {
-		sql += ' AND t.account_id = ?';
-		args.push(accountId);
-	}
-	if (categoryId) {
-		sql += ' AND t.category_id = ?';
-		args.push(categoryId);
-	}
-
-	sql += ' ORDER BY t.date DESC, t.id DESC LIMIT ? OFFSET ?';
-	args.push(limit, offset);
+	const args: InValue[] = [...filterArgs, limit, offset];
 
 	const result = await db.execute({ sql, args });
 
@@ -72,7 +82,7 @@ export const GET: RequestHandler = async (event) => {
 		category_type: row.category_type
 	}));
 
-	return successResponse({ transactions });
+	return successResponse({ transactions, total, limit, offset });
 };
 
 // POST /api/transactions - Create a new transaction

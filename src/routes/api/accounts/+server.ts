@@ -82,28 +82,54 @@ export const PUT: RequestHandler = async (event) => {
 
 	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
 
+	// Get current account balance before update
+	const currentAccount = await db.execute({
+		sql: 'SELECT balance FROM accounts WHERE id = ? AND user_id = ?',
+		args: [id, user.userId]
+	});
+
+	if (currentAccount.rows.length === 0) {
+		throw error(404, 'Account not found');
+	}
+
+	const currentBalance = currentAccount.rows[0].balance as number;
+
 	const { name, type } = parsed.data;
-	const balance = parsed.data.balance ?? 0;
+	const newBalance = parsed.data.balance ?? 0;
 	const currency = parsed.data.currency ?? 'RON';
 	const color = parsed.data.color ?? '#3B82F6';
 	const icon = parsed.data.icon ?? null;
+
+	// If balance changed, create a reconciliation transaction
+	const balanceDifference = newBalance - currentBalance;
+	if (balanceDifference !== 0) {
+		const description = balanceDifference > 0 ? 'Reconciliation Adjustment (+)' : 'Reconciliation Adjustment (-)';
+		
+		await db.execute({
+			sql: `INSERT INTO transactions (user_id, account_id, amount, description, payee, memo, date, cleared, created_at, updated_at)
+				  VALUES (?, ?, ?, ?, ?, ?, date('now'), 'reconciled', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			args: [user.userId, id, balanceDifference, description, 'Reconciliation', `Balance adjusted from ${currentBalance} to ${newBalance}`]
+		});
+	}
 
 	await db.execute({
 		sql: `UPDATE accounts 
 			  SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND user_id = ?`,
-		args: [name, type, balance, currency, color, icon, id, user.userId]
+		args: [name, type, newBalance, currency, color, icon, id, user.userId]
 	});
 
-	return successResponse({ message: 'Account updated' });
+	return successResponse({ message: 'Account updated', reconciled: balanceDifference !== 0 });
 };
 
-// DELETE /api/accounts - Soft delete an account with optional balance transfer
+// DELETE /api/accounts - Soft delete an account with optional balance transfer or zero-out, or permanent delete
 export const DELETE: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const params = parseSearchParams(event.url);
 	const id = params.getInt('id');
 	const transferToId = params.getInt('transferTo');
+	const zeroBalance = params.getBoolean('zeroBalance');
+	const permanent = params.getBoolean('permanent');
 
 	if (!id) {
 		throw error(400, 'Account ID is required');
@@ -111,9 +137,26 @@ export const DELETE: RequestHandler = async (event) => {
 
 	await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
 
+	// If permanent delete, remove the account and all associated transactions
+	if (permanent) {
+		// First delete all transactions for this account
+		await db.execute({
+			sql: 'DELETE FROM transactions WHERE account_id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+
+		// Then delete the account
+		await db.execute({
+			sql: 'DELETE FROM accounts WHERE id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+
+		return successResponse({ message: 'Account permanently deleted' });
+	}
+
 	// Get the account being closed
 	const sourceResult = await db.execute({
-		sql: 'SELECT balance, currency FROM accounts WHERE id = ? AND user_id = ?',
+		sql: 'SELECT balance, currency, name FROM accounts WHERE id = ? AND user_id = ?',
 		args: [id, user.userId]
 	});
 
@@ -123,9 +166,29 @@ export const DELETE: RequestHandler = async (event) => {
 
 	const sourceBalance = sourceResult.rows[0].balance as number;
 	const sourceCurrency = sourceResult.rows[0].currency as string;
+	const accountName = sourceResult.rows[0].name as string;
 
+	// If zeroBalance is true, create an adjustment transaction to bring balance to 0
+	if (sourceBalance !== 0 && zeroBalance) {
+		// Create adjustment transaction (negative of current balance to bring it to 0)
+		const adjustmentAmount = -sourceBalance;
+		const description = sourceBalance > 0 ? 'Closing Balance Withdrawal' : 'Closing Balance Adjustment';
+		const memo = `Account closed: ${accountName}`;
+
+		await db.execute({
+			sql: `INSERT INTO transactions (user_id, account_id, amount, description, payee, memo, date, cleared, created_at, updated_at)
+				  VALUES (?, ?, ?, ?, ?, ?, date('now'), 'cleared', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			args: [user.userId, id, adjustmentAmount, description, description, memo]
+		});
+
+		// Set source account balance to 0
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [id, user.userId]
+		});
+	}
 	// If there's a balance and a transfer target, do the transfer
-	if (sourceBalance !== 0 && transferToId) {
+	else if (sourceBalance !== 0 && transferToId) {
 		await verifyOwnership(db, 'accounts', transferToId, user.userId, 'Target account');
 
 		// Get target account currency
@@ -187,12 +250,61 @@ export const DELETE: RequestHandler = async (event) => {
 	return successResponse({ message: 'Account deleted' });
 };
 
-// PATCH /api/accounts - Reorder accounts or reopen account
+// PATCH /api/accounts - Reorder accounts, reopen account, recalculate balances, or set balance
 export const PATCH: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const params = parseSearchParams(event.url);
 	const action = params.getString('action');
 	const id = params.getInt('id');
+
+	// Handle set-balance action (for manual adjustment)
+	if (action === 'set-balance' && id) {
+		const body = await event.request.json();
+		const { balance } = body as { balance: number };
+		
+		if (typeof balance !== 'number') {
+			throw error(400, 'Balance must be a number');
+		}
+		
+		await verifyOwnership(db, 'accounts', id, user.userId, 'Account');
+		
+		await db.execute({
+			sql: 'UPDATE accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+			args: [balance, id, user.userId]
+		});
+		
+		return successResponse({ message: 'Balance updated', balance });
+	}
+
+	// Handle recalculate balances action
+	if (action === 'recalculate-balances') {
+		const accounts = await db.execute({
+			sql: 'SELECT id, name FROM accounts WHERE user_id = ?',
+			args: [user.userId]
+		});
+		
+		const updatedBalances: { name: string; balance: number }[] = [];
+		
+		for (const account of accounts.rows) {
+			const balanceResult = await db.execute({
+				sql: 'SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?',
+				args: [account.id]
+			});
+			const balance = (balanceResult.rows[0]?.balance as number) || 0;
+			
+			await db.execute({
+				sql: 'UPDATE accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+				args: [balance, account.id]
+			});
+			
+			updatedBalances.push({ name: account.name as string, balance });
+		}
+		
+		return successResponse({ 
+			message: 'Account balances recalculated',
+			balances: updatedBalances
+		});
+	}
 
 	// Handle reopen action
 	if (action === 'reopen' && id) {

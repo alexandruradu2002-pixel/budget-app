@@ -15,6 +15,7 @@ export const POST: RequestHandler = async (event) => {
 		const registerFile = formData.get('register') as File | null;
 		const planFile = formData.get('plan') as File | null;
 		const analyzeOnly = formData.get('analyzeOnly') === 'true';
+		const clearExisting = formData.get('clearExisting') === 'true';
 
 		if (!registerFile) {
 			return json({ error: 'Register CSV file is required' }, { status: 400 });
@@ -34,7 +35,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		// Import data
-		const result = await importYNABData(user.userId, registerCSV, planCSV);
+		const result = await importYNABData(user.userId, registerCSV, planCSV, { clearExisting });
 
 		if (!result.success) {
 			return json(

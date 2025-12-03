@@ -9,7 +9,8 @@
 		allAccounts = [] as Account[],
 		onSave = async () => {},
 		onClose = () => {},
-		onCloseAccount = async (_id: number) => {}
+		onCloseAccount = async (_id: number) => {},
+		onDeleteAccount = async (_id: number) => {}
 	} = $props();
 
 	// Determine if we're editing
@@ -93,9 +94,11 @@
 
 	let saving = $state(false);
 	let closing = $state(false);
+	let deleting = $state(false);
 	let showTypeSelector = $state(false);
 	let showCurrencySelector = $state(false);
 	let showCloseConfirm = $state(false);
+	let showDeleteConfirm = $state(false);
 	let selectedTransferAccountId = $state<number | null>(null);
 
 	// Get other active accounts for transfer (excluding current account)
@@ -293,6 +296,58 @@
 		}
 	}
 
+	// Close account with zero balance (creates adjustment transaction)
+	async function handleCloseAccountWithZeroBalance() {
+		if (!account) return;
+		
+		closing = true;
+		try {
+			const url = `/api/accounts?id=${account.id}&zeroBalance=true`;
+			
+			const response = await fetch(url, {
+				method: 'DELETE'
+			});
+
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.message || 'Nu s-a putut închide contul');
+			}
+
+			toast.success('Contul a fost închis și balanța a fost resetată la 0');
+			await onCloseAccount(account.id);
+			closeModal();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Eroare la închiderea contului');
+		} finally {
+			closing = false;
+		}
+	}
+
+	// Permanently delete account from database
+	async function handleDeleteAccount() {
+		if (!account) return;
+		
+		deleting = true;
+		try {
+			const response = await fetch(`/api/accounts?id=${account.id}&permanent=true`, {
+				method: 'DELETE'
+			});
+
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.message || 'Nu s-a putut șterge contul');
+			}
+
+			toast.success('Contul a fost șters permanent');
+			await onDeleteAccount(account.id);
+			closeModal();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Eroare la ștergerea contului');
+		} finally {
+			deleting = false;
+		}
+	}
+
 	// Handle type selection
 	function selectType(type: 'cash' | 'investment' | 'savings') {
 		formData.type = type;
@@ -436,6 +491,13 @@
 						</svg>
 						Close Account
 					</button>
+
+					<button type="button" onclick={() => showDeleteConfirm = true} class="btn-delete-account">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						</svg>
+						Delete Account
+					</button>
 				{/if}
 			</div>
 		</div>
@@ -563,8 +625,29 @@
 									</div>
 								{/if}
 							{:else}
-								<p class="no-accounts-warning">No other accounts available. The balance will remain in this closed account.</p>
+								<p class="no-accounts-warning">No other accounts available. Use "Zero Balance" to create an adjustment transaction.</p>
 							{/if}
+
+							<!-- Zero Balance Option -->
+							<div class="zero-balance-option">
+								<div class="divider-with-text">
+									<span>or</span>
+								</div>
+								<button class="btn-zero-balance" onclick={handleCloseAccountWithZeroBalance} disabled={closing}>
+									{#if closing}
+										<svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+										</svg>
+										Processing...
+									{:else}
+										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+										</svg>
+										Zero Balance & Close
+									{/if}
+								</button>
+								<p class="zero-balance-hint">Creates an adjustment transaction to bring balance to 0</p>
+							</div>
 						</div>
 					{:else}
 						<p class="close-confirm-text">Are you sure you want to close this account? You can reopen it later from the Closed section.</p>
@@ -574,14 +657,75 @@
 						<button class="btn-cancel" onclick={() => showCloseConfirm = false}>
 							Cancel
 						</button>
-						<button class="btn-confirm-close" onclick={handleCloseAccount} disabled={closing}>
-							{#if closing}
+						{#if account && account.balance !== 0}
+							<button class="btn-confirm-close" onclick={handleCloseAccount} disabled={closing || !selectedTransferAccountId}>
+								{#if closing}
+									<svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									</svg>
+									Closing...
+								{:else}
+									Transfer & Close
+								{/if}
+							</button>
+						{:else}
+							<button class="btn-confirm-close" onclick={handleCloseAccount} disabled={closing}>
+								{#if closing}
+									<svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									</svg>
+									Closing...
+								{:else}
+									Close Account
+								{/if}
+							</button>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Delete Account Confirmation Sheet -->
+		{#if showDeleteConfirm}
+			<div class="selector-overlay" onclick={() => showDeleteConfirm = false} role="presentation"></div>
+			<div class="selector-sheet delete-confirm-sheet">
+				<div class="selector-header">
+					<h3 class="selector-title delete-title">⚠️ Delete Account</h3>
+					<button class="selector-close" aria-label="Close" onclick={() => showDeleteConfirm = false}>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+				
+				<div class="delete-confirm-content">
+					<div class="delete-warning">
+						<svg class="warning-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+						<div class="warning-text">
+							<p class="warning-title">Această acțiune este permanentă!</p>
+							<p class="warning-description">
+								Contul <strong>"{account?.name}"</strong> și toate tranzacțiile asociate vor fi șterse definitiv din baza de date. Această acțiune nu poate fi anulată.
+							</p>
+						</div>
+					</div>
+					
+					<div class="delete-confirm-actions">
+						<button class="btn-cancel" onclick={() => showDeleteConfirm = false}>
+							Cancel
+						</button>
+						<button class="btn-confirm-delete" onclick={handleDeleteAccount} disabled={deleting}>
+							{#if deleting}
 								<svg class="spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 								</svg>
-								Closing...
+								Deleting...
 							{:else}
-								Close Account
+								<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+								</svg>
+								Delete Permanently
 							{/if}
 						</button>
 					</div>
@@ -815,6 +959,41 @@
 	}
 
 	.btn-close-account svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.btn-delete-account {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		width: 100%;
+		padding: 16px;
+		background-color: var(--color-danger);
+		border: none;
+		border-radius: 12px;
+		color: white;
+		font-size: 16px;
+		font-weight: 600;
+		min-height: 52px;
+		opacity: 0.8;
+	}
+
+	.btn-delete-account:hover {
+		opacity: 1;
+	}
+
+	.btn-delete-account:active:not(:disabled) {
+		opacity: 0.9;
+	}
+
+	.btn-delete-account:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.btn-delete-account svg {
 		width: 20px;
 		height: 20px;
 	}
@@ -1075,6 +1254,76 @@
 		border-radius: 8px;
 	}
 
+	/* Zero Balance Option */
+	.zero-balance-option {
+		margin-top: 16px;
+	}
+
+	.divider-with-text {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 16px;
+	}
+
+	.divider-with-text::before,
+	.divider-with-text::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background-color: var(--color-border);
+	}
+
+	.divider-with-text span {
+		font-size: 13px;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.btn-zero-balance {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px;
+		background-color: var(--color-bg-tertiary);
+		border: 2px solid var(--color-primary);
+		border-radius: 12px;
+		color: var(--color-primary);
+		font-size: 16px;
+		font-weight: 600;
+		min-height: 48px;
+		transition: all 0.2s ease;
+	}
+
+	.btn-zero-balance:hover:not(:disabled) {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.btn-zero-balance:active:not(:disabled) {
+		opacity: 0.9;
+	}
+
+	.btn-zero-balance:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.btn-zero-balance svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.zero-balance-hint {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		text-align: center;
+		margin: 8px 0 0 0;
+	}
+
 	.close-confirm-actions {
 		display: flex;
 		gap: 12px;
@@ -1123,6 +1372,97 @@
 	}
 
 	.btn-confirm-close svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	/* Delete Confirm Sheet */
+	.delete-confirm-sheet {
+		max-height: 60vh;
+	}
+
+	.delete-title {
+		color: var(--color-danger);
+	}
+
+	.delete-confirm-content {
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.delete-warning {
+		display: flex;
+		gap: 14px;
+		padding: 16px;
+		background-color: rgba(239, 68, 68, 0.1);
+		border: 1px solid var(--color-danger);
+		border-radius: 12px;
+	}
+
+	.warning-icon {
+		width: 28px;
+		height: 28px;
+		color: var(--color-danger);
+		flex-shrink: 0;
+	}
+
+	.warning-text {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.warning-title {
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--color-danger);
+		margin: 0;
+	}
+
+	.warning-description {
+		font-size: 14px;
+		color: var(--color-text-secondary);
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	.warning-description strong {
+		color: var(--color-text-primary);
+	}
+
+	.delete-confirm-actions {
+		display: flex;
+		gap: 12px;
+	}
+
+	.btn-confirm-delete {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px;
+		background-color: var(--color-danger);
+		border: none;
+		border-radius: 12px;
+		color: white;
+		font-size: 16px;
+		font-weight: 600;
+		min-height: 48px;
+	}
+
+	.btn-confirm-delete:active:not(:disabled) {
+		opacity: 0.9;
+	}
+
+	.btn-confirm-delete:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.btn-confirm-delete svg {
 		width: 18px;
 		height: 18px;
 	}

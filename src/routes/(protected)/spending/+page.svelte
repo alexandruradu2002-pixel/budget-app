@@ -18,7 +18,10 @@
 		cleared?: string;
 	}
 
+	const PAGE_SIZE = 20;
+
 	let loading = $state(true);
+	let loadingMore = $state(false);
 	let transactions = $state<Transaction[]>([]);
 	let accounts = $state<Account[]>([]);
 	let categories = $state<Category[]>([]);
@@ -26,6 +29,14 @@
 	let editingTransaction = $state<Transaction | null>(null);
 	let searchQuery = $state('');
 	let showSearch = $state(false);
+	
+	// Pagination state
+	let totalTransactions = $state(0);
+	let currentOffset = $state(0);
+	let hasMore = $derived(currentOffset + transactions.length < totalTransactions);
+	
+	// Infinite scroll
+	let listContainer: HTMLDivElement;
 
 	// Format amount with account's currency
 	function formatAmountWithCurrency(amount: number, accountId: number): string {
@@ -50,18 +61,43 @@
 
 	async function loadData() {
 		try {
+			// Reset pagination when loading fresh data
+			currentOffset = 0;
 			const [txRes, accRes, catRes] = await Promise.all([
-				fetch('/api/transactions'),
+				fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0`),
 				fetch('/api/accounts'),
 				fetch('/api/categories')
 			]);
-			if (txRes.ok) transactions = (await txRes.json()).transactions;
+			if (txRes.ok) {
+				const data = await txRes.json();
+				transactions = data.transactions;
+				totalTransactions = data.total;
+			}
 			if (accRes.ok) accounts = (await accRes.json()).accounts;
 			if (catRes.ok) categories = (await catRes.json()).categories;
 		} catch (error) {
 			console.error('Failed to load data:', error);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadMore() {
+		if (loadingMore || !hasMore) return;
+		
+		loadingMore = true;
+		try {
+			const newOffset = currentOffset + PAGE_SIZE;
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}`);
+			if (res.ok) {
+				const data = await res.json();
+				transactions = [...transactions, ...data.transactions];
+				currentOffset = newOffset;
+			}
+		} catch (error) {
+			console.error('Failed to load more transactions:', error);
+		} finally {
+			loadingMore = false;
 		}
 	}
 
@@ -105,6 +141,16 @@
 		return !tx.category_id || tx.category_name === 'Ready to Assign';
 	}
 
+	function handleScroll(event: Event) {
+		const target = event.target as HTMLDivElement;
+		const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+		
+		// Load more when user scrolls within 200px of the bottom
+		if (scrollBottom < 200 && hasMore && !loadingMore && !loading) {
+			loadMore();
+		}
+	}
+
 	$effect(() => { loadData(); });
 </script>
 
@@ -143,7 +189,7 @@
 	{/if}
 
 	<!-- Transactions List -->
-	<div class="transactions-list">
+	<div class="transactions-list" bind:this={listContainer} onscroll={handleScroll}>
 		{#if loading}
 			<LoadingState message="Loading transactions..." />
 		{:else if transactions.length === 0}
@@ -202,6 +248,25 @@
 					</div>
 				</div>
 			{/each}
+			
+			<!-- Loading indicator for infinite scroll -->
+			{#if hasMore || loadingMore}
+				<div class="load-more-container">
+					{#if loadingMore}
+						<div class="loading-indicator">
+							<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+								<circle cx="12" cy="12" r="10" stroke-width="2" stroke-opacity="0.3" />
+								<path stroke-linecap="round" stroke-width="2" d="M12 2a10 10 0 0 1 10 10" />
+							</svg>
+							<span>Se încarcă...</span>
+						</div>
+					{:else}
+						<button class="load-more-btn" onclick={loadMore}>
+							Încarcă mai multe ({totalTransactions - transactions.length} rămase)
+						</button>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -457,6 +522,61 @@
 		color: var(--color-text-muted);
 		font-style: italic;
 		padding-top: 2px;
+	}
+
+	/* Load More Button */
+	.load-more-container {
+		display: flex;
+		justify-content: center;
+		padding: 16px 0 32px;
+	}
+
+	.load-more-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px 28px;
+		background: var(--color-bg-secondary);
+		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		min-width: 200px;
+	}
+
+	.load-more-btn:hover:not(:disabled) {
+		background: var(--color-bg-tertiary);
+		border-color: var(--color-primary);
+	}
+
+	.load-more-btn:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.loading-indicator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 16px;
+		color: var(--color-text-muted);
+		font-size: 14px;
+	}
+
+	.loading-indicator .spinner {
+		width: 18px;
+		height: 18px;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
 	/* Responsive */

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { FileUpload, StatCard, Button, Alert, SettingsSection } from '$lib/components';
 	import { formatCurrency } from '$lib/utils/format';
+	import { toast } from '$lib/stores';
 
 	// Types
 	interface AnalysisResult {
@@ -29,6 +30,7 @@
 	let analysis = $state<AnalysisResult | null>(null);
 	let importResult = $state<ImportResult | null>(null);
 	let error = $state<string | null>(null);
+	let clearExisting = $state(false);
 
 	// Computed
 	let importComplete = $derived(importResult !== null && importResult.errors.length === 0);
@@ -68,6 +70,23 @@
 
 	async function importData() {
 		if (!registerFile) return;
+		
+		// Confirm if clearing existing data
+		if (clearExisting) {
+			const confirmed = confirm(
+				'⚠️ ATENȚIE!\n\n' +
+				'Această acțiune va ȘTERGE PERMANENT toate datele existente:\n' +
+				'• Toate tranzacțiile\n' +
+				'• Toate conturile\n' +
+				'• Toate categoriile\n' +
+				'• Toate bugetele\n' +
+				'• Toate payee-urile salvate\n' +
+				'• Toate locațiile învățate\n\n' +
+				'Datele nu pot fi recuperate!\n\n' +
+				'Ești sigur că vrei să continui?'
+			);
+			if (!confirmed) return;
+		}
 
 		loading = true;
 		error = null;
@@ -77,6 +96,9 @@
 			formData.append('register', registerFile);
 			if (planFile) {
 				formData.append('plan', planFile);
+			}
+			if (clearExisting) {
+				formData.append('clearExisting', 'true');
 			}
 
 			const response = await fetch('/api/import', {
@@ -91,8 +113,14 @@
 			}
 
 			importResult = data.result;
+			
+			// Show success toast
+			toast.success(
+				`✅ Import finalizat! ${data.result.transactions.imported.toLocaleString()} tranzacții importate.`
+			);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Import failed';
+			toast.error('Import eșuat. Verifică erorile de mai jos.');
 		} finally {
 			loading = false;
 		}
@@ -104,6 +132,7 @@
 		analysis = null;
 		importResult = null;
 		error = null;
+		clearExisting = false;
 	}
 
 	function handleRegisterFile(file: File | null) {
@@ -228,6 +257,32 @@
 							</ul>
 						</div>
 					</div>
+
+					<!-- Clear existing data option -->
+					<div class="clear-option">
+						<label class="checkbox-label">
+							<input type="checkbox" bind:checked={clearExisting} />
+							<span class="checkbox-text">Șterge datele existente înainte de import</span>
+						</label>
+						
+						{#if clearExisting}
+							<div class="warning-box">
+								<svg class="warning-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+								</svg>
+								<div class="warning-content">
+									<strong>⚠️ Atenție!</strong>
+									<p>Toate datele existente vor fi șterse permanent:</p>
+									<ul>
+										<li>Tranzacții, Conturi, Categorii</li>
+										<li>Bugete și alocări</li>
+										<li>Payee-uri și locații învățate</li>
+									</ul>
+									<p><strong>Această acțiune nu poate fi anulată!</strong></p>
+								</div>
+							</div>
+						{/if}
+					</div>
 				</div>
 			{/if}
 
@@ -237,12 +292,28 @@
 						{analyzing ? 'Analyzing...' : 'Preview Import'}
 					</Button>
 				{:else}
-					<Button onclick={importData} disabled={!canImport} loading={loading}>
-						{loading ? 'Importing...' : 'Import Data'}
-					</Button>
-					<Button variant="secondary" onclick={reset} disabled={loading}>
-						Cancel
-					</Button>
+					<div class="import-info">
+						{#if analysis.totalTransactions > 1000}
+							<p class="time-estimate">
+								⏱️ Timp estimat: ~{Math.ceil(analysis.totalTransactions / (clearExisting ? 500 : 100))} secunde
+								{#if !clearExisting}
+									<span class="tip">(mai rapid cu "Șterge datele existente")</span>
+								{/if}
+							</p>
+						{/if}
+					</div>
+					<div class="action-buttons">
+						<Button onclick={importData} disabled={!canImport} loading={loading}>
+							{#if loading}
+								Importing... please wait
+							{:else}
+								Import {analysis.totalTransactions.toLocaleString()} Transactions
+							{/if}
+						</Button>
+						<Button variant="secondary" onclick={reset} disabled={loading}>
+							Cancel
+						</Button>
+					</div>
 				{/if}
 			</div>
 		</div>
@@ -343,16 +414,105 @@
 		margin: 0.25rem 0;
 	}
 
+	/* Clear existing option */
+	.clear-option {
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+		color: var(--color-text-primary);
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 1rem;
+		height: 1rem;
+		accent-color: var(--color-danger);
+		cursor: pointer;
+	}
+
+	.checkbox-text {
+		user-select: none;
+	}
+
+	.warning-box {
+		display: flex;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
+		padding: 0.875rem;
+		background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+		border: 1px solid var(--color-danger);
+		border-radius: 0.5rem;
+	}
+
+	.warning-icon {
+		width: 1.5rem;
+		height: 1.5rem;
+		flex-shrink: 0;
+		color: var(--color-danger);
+	}
+
+	.warning-content {
+		font-size: 0.8rem;
+		color: var(--color-text-primary);
+	}
+
+	.warning-content strong {
+		color: var(--color-danger);
+	}
+
+	.warning-content p {
+		margin: 0.25rem 0;
+	}
+
+	.warning-content ul {
+		margin: 0.25rem 0;
+		padding-left: 1rem;
+		color: var(--color-text-secondary);
+	}
+
+	.warning-content li {
+		margin: 0.125rem 0;
+	}
+
 	/* Actions */
 	.actions {
 		display: flex;
+		flex-direction: column;
 		gap: 0.75rem;
 		margin-top: 0.5rem;
-		justify-content: center;
 	}
 
-	.import-form .actions {
+	.action-buttons {
+		display: flex;
+		gap: 0.75rem;
 		justify-content: flex-start;
+	}
+
+	.import-info {
+		margin-bottom: 0.5rem;
+	}
+
+	.time-estimate {
+		font-size: 0.8rem;
+		color: var(--color-text-secondary);
+		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.time-estimate .tip {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		font-style: italic;
 	}
 
 	/* Responsive */

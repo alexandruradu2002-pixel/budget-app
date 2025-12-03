@@ -119,21 +119,16 @@ export function parseYNABRegister(csvContent: string): YNABTransaction[] {
 		const row = rows[i];
 		if (row.length < 11) continue;
 
-		// Ignoră transferurile interne (categoria goală sau Transfer)
 		const categoryGroup = row[5] || '';
 		const category = row[6] || '';
 		const payee = row[3] || '';
 
-		// Skip transfers between accounts
+		// Skip transfers between accounts (these would create duplicate entries)
 		if (payee.startsWith('Transfer :') || payee.startsWith('Transfer:')) {
 			continue;
 		}
 
-		// Skip transactions without category (unassigned/transfers)
-		if (!categoryGroup && !category) {
-			continue;
-		}
-
+		// Include ALL transactions (even without category - will be imported as uncategorized)
 		transactions.push({
 			account: row[0] || '',
 			flag: row[1] || '',
@@ -216,6 +211,25 @@ function mapAccountType(
 }
 
 // ============================================
+// Cleared Status Mapper
+// ============================================
+
+/**
+ * Maps YNAB cleared status to our database schema
+ * YNAB uses: "Cleared", "Uncleared", "Reconciled" (case varies)
+ * Our schema uses: "cleared", "uncleared", "reconciled"
+ */
+function mapClearedStatus(ynabStatus: string): 'cleared' | 'uncleared' | 'reconciled' {
+	const status = ynabStatus.toLowerCase().trim();
+	
+	if (status === 'cleared') return 'cleared';
+	if (status === 'reconciled') return 'reconciled';
+	
+	// Default to uncleared for anything else (including empty string)
+	return 'uncleared';
+}
+
+// ============================================
 // Color Generator
 // ============================================
 
@@ -244,14 +258,46 @@ function getCategoryColor(groupName: string): string {
 }
 
 // ============================================
+// Clear User Data Function
+// ============================================
+
+/**
+ * Clears all user data before import (transactions, accounts, categories, budgets, payees)
+ * This is useful for a fresh start or when re-importing after a failed import
+ */
+async function clearUserData(userId: number): Promise<void> {
+	console.log('🗑️  Clearing existing user data...');
+	
+	// Order matters due to foreign key constraints
+	// Delete in order: transactions → budgets → budget_allocations → learned_locations → accounts → categories → category_groups → payees
+	await db.execute({ sql: 'DELETE FROM transactions WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM budgets WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM budget_allocations WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM learned_locations WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM accounts WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM categories WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM category_groups WHERE user_id = ?', args: [userId] });
+	await db.execute({ sql: 'DELETE FROM payees WHERE user_id = ?', args: [userId] });
+	
+	console.log('✅ User data cleared');
+}
+
+// ============================================
 // Main Import Function
 // ============================================
+
+export interface ImportOptions {
+	clearExisting?: boolean;
+}
 
 export async function importYNABData(
 	userId: number,
 	registerCSV: string,
-	planCSV?: string
+	planCSV?: string,
+	options: ImportOptions = {}
 ): Promise<ImportResult> {
+	const { clearExisting = false } = options;
+	
 	const result: ImportResult = {
 		success: false,
 		accounts: { created: 0, existing: 0 },
@@ -262,6 +308,11 @@ export async function importYNABData(
 	};
 
 	try {
+		// 0. Clear existing data if requested
+		if (clearExisting) {
+			await clearUserData(userId);
+		}
+		
 		// 1. Parse CSV-uri
 		const transactions = parseYNABRegister(registerCSV);
 		const budgets = planCSV ? parseYNABPlan(planCSV) : [];
@@ -274,9 +325,10 @@ export async function importYNABData(
 			...new Set(transactions.map((t) => t.categoryGroup))
 		].filter(Boolean);
 		const uniqueCategories = [...new Set(transactions.map((t) => t.category))].filter(Boolean);
+		const uniquePayees = [...new Set(transactions.map((t) => t.payee))].filter(Boolean);
 
 		console.log(
-			`📁 Found ${uniqueAccounts.length} accounts, ${uniqueCategoryGroups.length} category groups`
+			`📁 Found ${uniqueAccounts.length} accounts, ${uniqueCategoryGroups.length} category groups, ${uniquePayees.length} payees`
 		);
 
 		// 3. Create accounts
@@ -310,12 +362,41 @@ export async function importYNABData(
 			}
 		}
 
-		// 4. Create category groups (as parent categories)
+		// 3.5 Create payees (for autocomplete functionality)
+		for (const payeeName of uniquePayees) {
+			// Skip transfer payees
+			if (payeeName.startsWith('Transfer :') || payeeName.startsWith('Transfer:')) continue;
+			// Skip system payees
+			if (payeeName === 'Starting Balance' || payeeName === 'Manual Balance Adjustment') continue;
+			
+			try {
+				await db.execute({
+					sql: `INSERT OR IGNORE INTO payees (user_id, name) VALUES (?, ?)`,
+					args: [userId, payeeName]
+				});
+			} catch {
+				// Ignore duplicate errors
+			}
+		}
+
+		// 4. Create category groups (as parent categories AND in category_groups table)
 		const categoryGroupMap = new Map<string, number>(); // group name -> id
 
 		for (const groupName of uniqueCategoryGroups) {
 			// Skip Inflow category
 			if (groupName === 'Inflow') continue;
+			// Skip Hidden Categories
+			if (groupName === 'Hidden Categories') continue;
+
+			// Also insert into category_groups table for Plan page
+			try {
+				await db.execute({
+					sql: `INSERT OR IGNORE INTO category_groups (user_id, name) VALUES (?, ?)`,
+					args: [userId, groupName]
+				});
+			} catch {
+				// Ignore duplicate errors
+			}
 
 			const existing = await db.execute({
 				sql: 'SELECT id FROM categories WHERE user_id = ? AND name = ? AND parent_id IS NULL AND group_name IS NULL',
@@ -388,7 +469,27 @@ export async function importYNABData(
 			}
 		}
 
-		// 6. Import transactions
+		// 6. Import transactions (optimized with batching)
+		console.log(`📝 Importing ${transactions.length} transactions...`);
+		const BATCH_SIZE = 100;
+		let processedCount = 0;
+		
+		// If clearExisting is true, skip duplicate checking (much faster)
+		const skipDuplicateCheck = clearExisting;
+		
+		// Prepare all valid transactions first
+		const validTransactions: Array<{
+			accountId: number;
+			categoryId: number | null;
+			amount: number;
+			date: string;
+			description: string;
+			payee: string | null;
+			memo: string | null;
+			flag: string | null;
+			cleared: 'cleared' | 'uncleared' | 'reconciled';
+		}> = [];
+		
 		for (const t of transactions) {
 			const accountId = accountMap.get(t.account);
 			if (!accountId) {
@@ -396,59 +497,95 @@ export async function importYNABData(
 				continue;
 			}
 
-			// Determine category ID
-			let categoryId: number;
+			// Determine category ID (can be null for uncategorized transactions)
+			let categoryId: number | null = null;
 			if (t.categoryGroup === 'Inflow') {
 				categoryId = incomeCategoryId;
-			} else {
+			} else if (t.categoryGroup && t.category) {
 				const key = `${t.categoryGroup}:${t.category}`;
 				const catId = categoryMap.get(key);
-				if (!catId) {
-					result.transactions.skipped++;
-					continue;
+				if (catId) {
+					categoryId = catId;
 				}
-				categoryId = catId;
+				// If category not found, leave as null (uncategorized)
 			}
+			// If no categoryGroup/category, categoryId stays null (uncategorized)
 
 			// Calculate amount (positive for inflow, negative for outflow)
 			const amount = t.inflow > 0 ? t.inflow : -t.outflow;
 			const date = parseYNABDate(t.date);
 			const description = t.payee || 'Unknown';
-
-			// Check for duplicates (same date, amount, description, account)
-			const existingTx = await db.execute({
-				sql: `SELECT id FROM transactions 
-              WHERE user_id = ? AND account_id = ? AND date = ? 
-              AND amount = ? AND description = ?`,
-				args: [userId, accountId, date, amount, description]
+			const clearedStatus = mapClearedStatus(t.cleared);
+			const flag = t.flag || null;
+			
+			validTransactions.push({
+				accountId,
+				categoryId,
+				amount,
+				date,
+				description,
+				payee: t.payee || null,
+				memo: t.memo || null,
+				flag,
+				cleared: clearedStatus
 			});
-
-			if (existingTx.rows.length > 0) {
-				result.transactions.skipped++;
-				continue;
-			}
-
-			await db.execute({
-				sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, notes)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				args: [userId, accountId, categoryId, amount, description, date, t.memo || null]
-			});
-			result.transactions.imported++;
 		}
+		
+		console.log(`📦 Prepared ${validTransactions.length} valid transactions for import`);
+		
+		// Insert in batches
+		for (let i = 0; i < validTransactions.length; i += BATCH_SIZE) {
+			const batch = validTransactions.slice(i, i + BATCH_SIZE);
+			
+			for (const tx of batch) {
+				// Check for duplicates only if not clearing existing data
+				if (!skipDuplicateCheck) {
+					const existingTx = await db.execute({
+						sql: `SELECT id FROM transactions 
+                  WHERE user_id = ? AND account_id = ? AND date = ? 
+                  AND amount = ? AND description = ?`,
+						args: [userId, tx.accountId, tx.date, tx.amount, tx.description]
+					});
+
+					if (existingTx.rows.length > 0) {
+						result.transactions.skipped++;
+						continue;
+					}
+				}
+
+				await db.execute({
+					sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, flag, cleared)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					args: [userId, tx.accountId, tx.categoryId, tx.amount, tx.description, tx.date, tx.payee, tx.memo, tx.flag, tx.cleared]
+				});
+				result.transactions.imported++;
+			}
+			
+			processedCount += batch.length;
+			if (processedCount % 500 === 0 || processedCount === validTransactions.length) {
+				console.log(`⏳ Processed ${processedCount}/${validTransactions.length} transactions...`);
+			}
+		}
+		
+		console.log(`✅ Imported ${result.transactions.imported} transactions, skipped ${result.transactions.skipped}`);
 
 		// 7. Update account balances
+		console.log('💰 Updating account balances...');
 		for (const [accountName, accountId] of accountMap) {
 			const balanceResult = await db.execute({
 				sql: 'SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?',
 				args: [accountId]
 			});
 			const balance = (balanceResult.rows[0]?.balance as number) || 0;
+			
+			console.log(`   ${accountName}: ${balance} RON`);
 
 			await db.execute({
 				sql: 'UPDATE accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
 				args: [balance, accountId]
 			});
 		}
+		console.log('✅ Account balances updated');
 
 		// 8. Import budgets (optional)
 		if (budgets.length > 0) {
