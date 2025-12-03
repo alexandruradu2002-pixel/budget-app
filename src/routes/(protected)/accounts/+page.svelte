@@ -26,6 +26,19 @@
 	let isReorderMode = $state(false);
 	let isEditMode = $state(false);
 	let editingAccount = $state<Account | null>(null);
+	
+	// Notes popup state
+	let showNotesPopup = $state(false);
+	let notesPopupContent = $state('');
+	let notesPopupAccountName = $state('');
+
+	function openNotesPopup(account: Account, event: MouseEvent) {
+		event.preventDefault();
+		event.stopPropagation();
+		notesPopupContent = account.notes || '';
+		notesPopupAccountName = account.name;
+		showNotesPopup = true;
+	}
 
 	// Helper function to calculate currency totals for a list of accounts
 	function calculateCurrencyTotals(accountList: Account[]): CurrencyTotal[] {
@@ -340,6 +353,17 @@
 									{#if account.currency && account.currency !== currencyStore.value}
 										<span class="account-currency">{account.currency}</span>
 									{/if}
+									{#if account.notes}
+										<button 
+											class="notes-icon-btn"
+											onclick={(e) => openNotesPopup(account, e)}
+											aria-label="View notes"
+										>
+											<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+											</svg>
+										</button>
+									{/if}
 								</div>
 								<span class="account-balance" class:negative={account.balance < 0}>
 									{formatAccountBalance(account)}
@@ -425,6 +449,27 @@
 	onClose={() => { editingAccount = null; }}
 	onCloseAccount={loadAccounts}
 />
+
+<!-- Notes Popup -->
+{#if showNotesPopup}
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<div class="notes-popup-overlay" onclick={() => showNotesPopup = false} role="presentation" onkeydown={(e) => e.key === 'Escape' && (showNotesPopup = false)}>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div class="notes-popup" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+			<div class="notes-popup-header">
+				<h3 class="notes-popup-title">{notesPopupAccountName}</h3>
+				<button class="notes-popup-close" onclick={() => showNotesPopup = false} aria-label="Close">
+					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="notes-popup-content">
+				<p>{notesPopupContent}</p>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.accounts-page {
@@ -775,5 +820,102 @@
 	.action-button svg {
 		width: 20px;
 		height: 20px;
+	}
+
+	/* Notes Icon Button */
+	.notes-icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.notes-icon-btn:hover,
+	.notes-icon-btn:active {
+		color: var(--color-primary);
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.notes-icon-btn svg {
+		width: 16px;
+		height: 16px;
+	}
+
+	/* Notes Popup */
+	.notes-popup-overlay {
+		position: fixed;
+		inset: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+		padding: 16px;
+	}
+
+	.notes-popup {
+		background-color: var(--color-bg-secondary);
+		border-radius: 16px;
+		width: 100%;
+		max-width: 320px;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+		overflow: hidden;
+	}
+
+	.notes-popup-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.notes-popup-title {
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin: 0;
+	}
+
+	.notes-popup-close {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		border-radius: 8px;
+	}
+
+	.notes-popup-close:active {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.notes-popup-close svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.notes-popup-content {
+		padding: 16px;
+	}
+
+	.notes-popup-content p {
+		margin: 0;
+		font-size: 15px;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+		white-space: pre-wrap;
 	}
 </style>

@@ -26,6 +26,7 @@ export const GET: RequestHandler = async (event) => {
 		currency: row.currency,
 		color: row.color,
 		icon: row.icon,
+		notes: row.notes,
 		is_active: row.is_active === 1,
 		sort_order: row.sort_order ?? 0,
 		created_at: row.created_at,
@@ -134,6 +135,7 @@ export const PUT: RequestHandler = async (event) => {
 	const newCurrency = parsed.data.currency ?? 'RON';
 	const color = parsed.data.color ?? '#3B82F6';
 	const icon = parsed.data.icon ?? null;
+	const notes = parsed.data.notes ?? null;
 
 	// Track if currency changed and transactions were converted
 	let currencyConverted = false;
@@ -181,9 +183,9 @@ export const PUT: RequestHandler = async (event) => {
 
 	await db.execute({
 		sql: `UPDATE accounts 
-			  SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, updated_at = CURRENT_TIMESTAMP
+			  SET name = ?, type = ?, balance = ?, currency = ?, color = ?, icon = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND user_id = ?`,
-		args: [name, type, newBalance, newCurrency, color, icon, id, user.userId]
+		args: [name, type, newBalance, newCurrency, color, icon, notes, id, user.userId]
 	});
 
 	return successResponse({ 

@@ -17,6 +17,7 @@ export const GET: RequestHandler = async (event) => {
 	const endDate = params.getDate('endDate');
 	const accountId = params.getInt('accountId');
 	const categoryId = params.getInt('categoryId');
+	const search = params.getString('search');
 
 	// Build WHERE clause for filtering
 	let whereClause = 't.user_id = ?';
@@ -37,6 +38,11 @@ export const GET: RequestHandler = async (event) => {
 	if (categoryId) {
 		whereClause += ' AND t.category_id = ?';
 		filterArgs.push(categoryId);
+	}
+	if (search) {
+		whereClause += ' AND (t.description LIKE ? OR t.payee LIKE ? OR t.memo LIKE ?)';
+		const searchPattern = `%${search}%`;
+		filterArgs.push(searchPattern, searchPattern, searchPattern);
 	}
 
 	// Get total count

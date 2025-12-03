@@ -163,7 +163,7 @@
 					type: (account.type === 'checking' ? 'cash' : account.type) as 'cash' | 'investment' | 'savings',
 					balance: account.balance.toString(),
 					currency: account.currency || 'RON',
-					notes: ''
+					notes: account.notes || ''
 				};
 			} else {
 				// Creating new account

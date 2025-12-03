@@ -33,6 +33,7 @@ export interface Account {
 	currency: string; // 'USD', 'EUR', 'RON'
 	color: string; // Hex color for UI
 	icon?: string; // Icon name
+	notes?: string; // Account notes
 	is_active: boolean;
 	sort_order?: number; // For custom ordering
 	ynab_account_name?: string; // Original YNAB account name

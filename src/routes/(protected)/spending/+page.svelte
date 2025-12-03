@@ -37,6 +37,10 @@
 	
 	// Infinite scroll
 	let listContainer: HTMLDivElement;
+	
+	// Search state
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+	let isSearching = $state(false);
 
 	// Format amount with account's currency
 	function formatAmountWithCurrency(amount: number, accountId: number): string {
@@ -45,19 +49,49 @@
 		return formatAmountUtil(amount, currency);
 	}
 
+	// Group transactions by date (no local filtering - search is done server-side)
 	let groupedTransactions = $derived.by(() => {
-		const filtered = transactions.filter(
-			(t) =>
-				t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				t.category_name?.toLowerCase().includes(searchQuery.toLowerCase())
-		);
 		const groups: Record<string, Transaction[]> = {};
-		for (const tx of filtered) {
+		for (const tx of transactions) {
 			if (!groups[tx.date]) groups[tx.date] = [];
 			groups[tx.date].push(tx);
 		}
 		return Object.entries(groups).sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime());
 	});
+
+	// Debounced search function
+	function handleSearchInput(value: string) {
+		searchQuery = value;
+		
+		// Clear previous timeout
+		if (searchTimeout) {
+			clearTimeout(searchTimeout);
+		}
+		
+		// Debounce: wait 300ms after user stops typing
+		searchTimeout = setTimeout(() => {
+			searchTransactions(value);
+		}, 300);
+	}
+
+	async function searchTransactions(query: string) {
+		isSearching = true;
+		currentOffset = 0;
+		
+		try {
+			const searchParam = query.trim() ? `&search=${encodeURIComponent(query.trim())}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}`);
+			if (res.ok) {
+				const data = await res.json();
+				transactions = data.transactions;
+				totalTransactions = data.total;
+			}
+		} catch (error) {
+			console.error('Failed to search transactions:', error);
+		} finally {
+			isSearching = false;
+		}
+	}
 
 	async function loadData() {
 		try {
@@ -88,7 +122,8 @@
 		loadingMore = true;
 		try {
 			const newOffset = currentOffset + PAGE_SIZE;
-			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}`);
+			const searchParam = searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}${searchParam}`);
 			if (res.ok) {
 				const data = await res.json();
 				transactions = [...transactions, ...data.transactions];
@@ -108,7 +143,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
 			});
-			if (res.ok) await loadData();
+			if (res.ok) await reloadWithCurrentSearch();
 		} catch (error) {
 			console.error('Failed to save transaction:', error);
 		}
@@ -117,9 +152,25 @@
 	async function handleDeleteTransaction(id: number) {
 		try {
 			const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
-			if (res.ok) await loadData();
+			if (res.ok) await reloadWithCurrentSearch();
 		} catch (error) {
 			console.error('Failed to delete transaction:', error);
+		}
+	}
+
+	// Reload transactions while preserving search state
+	async function reloadWithCurrentSearch() {
+		currentOffset = 0;
+		try {
+			const searchParam = searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}`);
+			if (res.ok) {
+				const data = await res.json();
+				transactions = data.transactions;
+				totalTransactions = data.total;
+			}
+		} catch (error) {
+			console.error('Failed to reload transactions:', error);
 		}
 	}
 
@@ -173,18 +224,26 @@
 				<input 
 					id="search-input" 
 					type="text" 
-					placeholder="Search transactions..." 
-					bind:value={searchQuery} 
+					placeholder="Search all transactions..." 
+					value={searchQuery}
+					oninput={(e) => handleSearchInput(e.currentTarget.value)}
 					class="search-input"
 				/>
-				{#if searchQuery}
-					<button class="search-clear" onclick={() => searchQuery = ''} aria-label="Clear search">
+				{#if isSearching}
+					<div class="search-spinner"></div>
+				{:else if searchQuery}
+					<button class="search-clear" onclick={() => { searchQuery = ''; searchTransactions(''); }} aria-label="Clear search">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
 				{/if}
 			</div>
+			{#if searchQuery && !isSearching}
+				<div class="search-results-count">
+					{totalTransactions} result{totalTransactions !== 1 ? 's' : ''} found
+				</div>
+			{/if}
 		</div>
 	{/if}
 
@@ -349,6 +408,25 @@
 
 	.search-clear:hover {
 		background: var(--color-border);
+	}
+
+	.search-spinner {
+		width: 18px;
+		height: 18px;
+		border: 2px solid var(--color-border);
+		border-top-color: var(--color-primary);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.search-results-count {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		padding: 4px 0 0 36px;
 	}
 
 	/* Transactions List */
