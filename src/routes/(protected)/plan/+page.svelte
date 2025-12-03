@@ -145,6 +145,21 @@
 		return converted;
 	});
 
+	// Total target remaining: sum of (target - spent) for each category, only positive values
+	// When spent reaches or exceeds target, that category contributes 0 to total
+	let totalTargetRemaining = $derived.by(() => {
+		// Dependencies for reactivity
+		const _ = currencyStore.value;
+		
+		let total = 0;
+		for (const [catId, target] of convertedTargets) {
+			const spent = spentByCategory.get(catId) || 0;
+			const remaining = Math.max(0, target - spent);
+			total += remaining;
+		}
+		return total;
+	});
+
 	// Load categories and build groups
 	async function loadCategories() {
 		loading = true;
@@ -198,18 +213,21 @@
 				accountCurrencies = currencyMap;
 			}
 
-			// Get groups from DB
-			let dbGroups: string[] = [];
+			// Get groups from DB with their sort orders
+			let groupSortOrders = new Map<string, number>();
 			if (groupsRes.ok) {
 				const groupsData = await groupsRes.json();
-				dbGroups = (groupsData.groups || []).map((g: { name: string }) => g.name);
+				const groups = groupsData.groups || [];
+				groups.forEach((g: { name: string; sort_order: number }, idx: number) => {
+					groupSortOrders.set(g.name, g.sort_order ?? idx);
+				});
 			}
 			
 			// Group categories by group_name
 			const groupMap = new Map<string, Category[]>();
 
 			// First, add all groups from DB (even empty ones, except Hidden/Uncategorized which are special)
-			for (const groupName of dbGroups) {
+			for (const [groupName] of groupSortOrders) {
 				if (groupName !== HIDDEN_GROUP && groupName !== UNCATEGORIZED) {
 					groupMap.set(groupName, []);
 				}
@@ -256,12 +274,16 @@
 						isExpanded: name !== UNCATEGORIZED && name !== HIDDEN_GROUP
 					};
 				})
-				// Sort: Hidden at the very end, Uncategorized before Hidden
+				// Sort: Hidden at the very end, Uncategorized before Hidden, then by sort_order
 				.sort((a, b) => {
 					if (a.name === HIDDEN_GROUP) return 1;
 					if (b.name === HIDDEN_GROUP) return -1;
 					if (a.name === UNCATEGORIZED) return 1;
 					if (b.name === UNCATEGORIZED) return -1;
+					// Sort by saved sort order from DB, fallback to alphabetical
+					const orderA = groupSortOrders.get(a.name) ?? 999;
+					const orderB = groupSortOrders.get(b.name) ?? 999;
+					if (orderA !== orderB) return orderA - orderB;
 					return a.name.localeCompare(b.name);
 				});
 		} catch (e) {
@@ -366,12 +388,20 @@
 		</HeaderButton>
 	</PageHeader>
 
-	<!-- Cashflow Summary -->
-	<div class="cashflow-summary">
-		<span class="cashflow-label">Cashflow</span>
-		<span class="cashflow-value" class:positive={cashflow >= 0} class:negative={cashflow < 0}>
-			{formatCurrency(cashflow)}
-		</span>
+	<!-- Cashflow and Target Summary -->
+	<div class="summary-row">
+		<div class="summary-item">
+			<span class="summary-label">Cashflow</span>
+			<span class="summary-value" class:positive={cashflow >= 0} class:negative={cashflow < 0}>
+				{formatCurrency(cashflow)}
+			</span>
+		</div>
+		<div class="summary-item">
+			<span class="summary-label">Target</span>
+			<span class="summary-value target">
+				{formatCurrency(totalTargetRemaining)}
+			</span>
+		</div>
 	</div>
 
 	<!-- Month Picker Dropdown -->
@@ -487,33 +517,43 @@
 		height: calc(100dvh - 70px);
 	}
 
-	/* Cashflow Summary */
-	.cashflow-summary {
+	/* Summary Row (Cashflow + Target) */
+	.summary-row {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: 8px;
+		gap: 24px;
 		padding: 12px 16px;
 		background-color: var(--color-bg-secondary);
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.cashflow-label {
+	.summary-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.summary-label {
 		font-size: 14px;
 		color: var(--color-text-muted);
 	}
 
-	.cashflow-value {
+	.summary-value {
 		font-size: 18px;
 		font-weight: 600;
 	}
 
-	.cashflow-value.positive {
+	.summary-value.positive {
 		color: var(--color-success);
 	}
 
-	.cashflow-value.negative {
+	.summary-value.negative {
 		color: var(--color-danger);
+	}
+
+	.summary-value.target {
+		color: var(--color-primary);
 	}
 
 	/* Sticky Column Header */

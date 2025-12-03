@@ -24,6 +24,19 @@
 		end_date?: string;
 	}
 
+	interface TargetHistoryItem {
+		id: number;
+		amount: number;
+		currency: string;
+		period: string;
+		start_date: string;
+		end_date?: string;
+		is_active: boolean;
+		month: string;
+		spending: number;
+		achieved: boolean;
+	}
+
 	let categoryId = $derived(Number($page.params.id));
 
 	// State
@@ -34,15 +47,20 @@
 	let categories = $state<Category[]>([]);
 	let accounts = $state<any[]>([]);
 	let target = $state<Target | null>(null);
+	let targetHistory = $state<TargetHistoryItem[]>([]);
 	
 	// Month selector state
 	let selectedMonth = $state(new Date().toISOString().slice(0, 7));
 	
 	// Target form state
 	let showTargetModal = $state(false);
+	let showHistoryModal = $state(false);
 	let targetAmount = $state('');
 	let targetCurrency = $state<CurrencyValue>('RON');
 	let savingTarget = $state(false);
+
+	// Chart time range state
+	let chartMonths = $state<12 | 6 | 3>(12);
 
 	// Transaction modal state
 	let showAddModal = $state(false);
@@ -98,7 +116,7 @@
 		const months: { month: string; spending: number; label: string }[] = [];
 		const now = new Date();
 		
-		for (let i = 11; i >= 0; i--) {
+		for (let i = chartMonths - 1; i >= 0; i--) {
 			const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
 			const monthKey = date.toISOString().slice(0, 7);
 			const stats = monthlyStats.find(s => s.month === monthKey);
@@ -142,6 +160,7 @@
 			category = details.category;
 			monthlyStats = details.monthlyStats || [];
 			target = details.target;
+			targetHistory = details.targetHistory || [];
 
 			if (target) {
 				targetAmount = target.amount.toString();
@@ -336,6 +355,11 @@
 			<button class="target-edit-btn" onclick={() => showTargetModal = true}>
 				{target ? 'Edit Target' : '+ Set Target'}
 			</button>
+			{#if target && targetHistory.length > 0}
+				<button class="target-history-btn" onclick={() => showHistoryModal = true}>
+					📊 History
+				</button>
+			{/if}
 		</div>
 
 		<!-- Search Bar -->
@@ -352,7 +376,20 @@
 
 		<!-- Chart Section -->
 		<div class="chart-section">
-			<h2 class="section-title">Last 12 Months</h2>
+			<div class="chart-header">
+				<h2 class="section-title">Last {chartMonths} Months</h2>
+				<div class="chart-range-selector">
+					{#each [12, 6, 3] as months}
+						<button 
+							class="range-btn" 
+							class:active={chartMonths === months}
+							onclick={() => chartMonths = months as 12 | 6 | 3}
+						>
+							{months}
+						</button>
+					{/each}
+				</div>
+			</div>
 			<div class="chart-container">
 				<!-- Grid lines -->
 				<div class="chart-grid">
@@ -392,7 +429,8 @@
 			<!-- X-axis labels -->
 			<div class="chart-labels">
 				{#each chartData as d, i}
-					{#if i % 2 === 0 || i === chartData.length - 1}
+					{@const showLabel = chartMonths <= 6 || i % 2 === 0 || i === chartData.length - 1}
+					{#if showLabel}
 						<span class="chart-label">{d.label}</span>
 					{/if}
 				{/each}
@@ -475,6 +513,50 @@
 				<button onclick={saveTarget} disabled={savingTarget} class="btn-primary">
 					{savingTarget ? 'Saving...' : 'Save'}
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Target History Modal -->
+{#if showHistoryModal}
+	<div class="modal-overlay" role="presentation">
+		<button class="modal-backdrop" onclick={() => showHistoryModal = false} aria-label="Close modal"></button>
+		<div class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+			<h3 id="history-modal-title" class="modal-title">Target History</h3>
+			
+			<div class="history-list">
+				{#each targetHistory as item}
+					{@const monthDate = new Date(item.month + '-01')}
+					{@const monthLabel = monthDate.toLocaleDateString('ro-RO', { month: 'long', year: 'numeric' })}
+					<div class="history-item" class:achieved={item.achieved} class:over={!item.achieved}>
+						<div class="history-item-header">
+							<span class="history-month">{monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}</span>
+							<span class="history-status" class:achieved={item.achieved}>
+								{item.achieved ? '✓ Achieved' : '✗ Over budget'}
+							</span>
+						</div>
+						<div class="history-item-details">
+							<div class="history-target">
+								<span class="history-label">Target:</span>
+								<span class="history-value">{formatCurrency(item.amount, item.currency as CurrencyValue)}</span>
+							</div>
+							<div class="history-spent">
+								<span class="history-label">Spent:</span>
+								<span class="history-value" class:over={!item.achieved}>{formatCurrency(item.spending)}</span>
+							</div>
+						</div>
+						{#if item.is_active}
+							<span class="history-active-badge">Current</span>
+						{/if}
+					</div>
+				{:else}
+					<p class="history-empty">No target history available.</p>
+				{/each}
+			</div>
+			
+			<div class="modal-actions">
+				<button onclick={() => showHistoryModal = false} class="btn-primary" style="flex: 1;">Close</button>
 			</div>
 		</div>
 	</div>
@@ -683,6 +765,21 @@
 		background-color: rgba(255, 255, 255, 0.3);
 	}
 
+	.target-history-btn {
+		margin-top: 8px;
+		padding: 8px 16px;
+		background-color: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 8px;
+		color: white;
+		font-size: 13px;
+		font-weight: 500;
+	}
+
+	.target-history-btn:active {
+		background-color: rgba(255, 255, 255, 0.2);
+	}
+
 	/* Search */
 	.search-container {
 		padding: 0 16px 12px;
@@ -719,7 +816,42 @@
 		font-size: 14px;
 		font-weight: 600;
 		color: var(--color-text-primary);
-		margin: 0 0 12px 0;
+		margin: 0;
+	}
+
+	.chart-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 12px;
+	}
+
+	.chart-range-selector {
+		display: flex;
+		gap: 4px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 8px;
+		padding: 2px;
+	}
+
+	.range-btn {
+		padding: 6px 10px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		background: none;
+		border: none;
+		border-radius: 6px;
+		min-width: 32px;
+	}
+
+	.range-btn.active {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.range-btn:active:not(.active) {
+		background-color: var(--color-border);
 	}
 
 	.chart-container {
@@ -974,5 +1106,115 @@
 	.currency-select {
 		width: 80px;
 		flex-shrink: 0;
+	}
+
+	/* History Modal */
+	.history-modal {
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.history-list {
+		flex: 1;
+		overflow-y: auto;
+		max-height: 400px;
+		margin-bottom: 16px;
+	}
+
+	.history-item {
+		padding: 12px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 10px;
+		margin-bottom: 8px;
+		border-left: 3px solid var(--color-border);
+	}
+
+	.history-item.achieved {
+		border-left-color: var(--color-success);
+	}
+
+	.history-item.over {
+		border-left-color: var(--color-danger);
+	}
+
+	.history-item-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+		gap: 8px;
+	}
+
+	.history-month {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		flex: 1;
+		min-width: 0;
+	}
+
+	.history-status {
+		font-size: 11px;
+		font-weight: 600;
+		color: white;
+		background-color: var(--color-danger);
+		padding: 4px 8px;
+		border-radius: 4px;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.history-status.achieved {
+		color: white;
+		background-color: var(--color-success);
+	}
+
+	.history-item-details {
+		display: flex;
+		gap: 16px;
+	}
+
+	.history-target,
+	.history-spent {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.history-label {
+		font-size: 11px;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.history-value {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.history-value.over {
+		color: var(--color-danger);
+	}
+
+	.history-active-badge {
+		display: inline-block;
+		margin-top: 8px;
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--color-primary);
+		background-color: rgba(59, 130, 246, 0.1);
+		padding: 2px 6px;
+		border-radius: 4px;
+		text-transform: uppercase;
+	}
+
+	.history-empty {
+		text-align: center;
+		color: var(--color-text-muted);
+		padding: 24px;
+		font-size: 14px;
 	}
 </style>

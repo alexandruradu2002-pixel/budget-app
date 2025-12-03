@@ -160,7 +160,10 @@
 					// Uncategorized after all named groups but before Hidden
 					if (a.name === UNCATEGORIZED) return 1;
 					if (b.name === UNCATEGORIZED) return -1;
-					// Sort alphabetically
+					// Sort by saved sort order from DB, fallback to alphabetical
+					const orderA = groupSortOrders.get(a.name) ?? 999;
+					const orderB = groupSortOrders.get(b.name) ?? 999;
+					if (orderA !== orderB) return orderA - orderB;
 					return a.name.localeCompare(b.name);
 				});
 		} catch (e) {

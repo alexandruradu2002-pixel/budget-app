@@ -77,6 +77,50 @@ export const GET: RequestHandler = async (event) => {
 		end_date: targetResult.rows[0].end_date
 	} : null;
 
+	// Get target history (all budgets for this category)
+	const targetHistoryResult = await db.execute({
+		sql: `
+			SELECT b.*, 
+				strftime('%Y-%m', b.start_date) as start_month
+			FROM budgets b
+			WHERE b.user_id = ? AND b.category_id = ?
+			ORDER BY b.start_date DESC
+		`,
+		args: [user.userId, categoryId]
+	});
+
+	// Build target history with spending data for each target period
+	const targetHistory = await Promise.all(targetHistoryResult.rows.map(async (row) => {
+		const startMonth = row.start_month as string;
+		
+		// Get spending for this target's month
+		const spendingResult = await db.execute({
+			sql: `
+				SELECT SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) as spending
+				FROM transactions
+				WHERE user_id = ? AND category_id = ?
+					AND strftime('%Y-%m', date) = ?
+			`,
+			args: [user.userId, categoryId, startMonth]
+		});
+		
+		const spending = Number(spendingResult.rows[0]?.spending) || 0;
+		const targetAmount = Number(row.amount) || 0;
+		
+		return {
+			id: row.id,
+			amount: targetAmount,
+			currency: row.currency || 'RON',
+			period: row.period,
+			start_date: row.start_date,
+			end_date: row.end_date,
+			is_active: row.is_active === 1,
+			month: startMonth,
+			spending,
+			achieved: spending <= targetAmount
+		};
+	}));
+
 	return successResponse({
 		category,
 		monthlyStats: monthlyStats.rows.map(row => ({
@@ -85,7 +129,8 @@ export const GET: RequestHandler = async (event) => {
 			income: Number(row.income) || 0,
 			transactionCount: Number(row.transaction_count) || 0
 		})),
-		target
+		target,
+		targetHistory
 	});
 };
 
