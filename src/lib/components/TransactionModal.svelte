@@ -548,30 +548,6 @@
 
 		<!-- Scrollable Content -->
 		<div class="modal-content">
-			<!-- Outflow/Inflow Toggle -->
-			<div class="toggle-container">
-				<div class="toggle-group">
-					<button
-						type="button"
-						class="toggle-btn"
-						class:active={!formData.isInflow}
-						onclick={() => formData.isInflow = false}
-					>
-						<span class="toggle-icon">−</span>
-						<span>Outflow</span>
-					</button>
-					<button
-						type="button"
-						class="toggle-btn"
-						class:active={formData.isInflow}
-						onclick={() => formData.isInflow = true}
-					>
-						<span class="toggle-icon">+</span>
-						<span>Inflow</span>
-					</button>
-				</div>
-			</div>
-
 			<!-- Amount Display -->
 			<div class="amount-display">
 				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
@@ -711,6 +687,26 @@
 		<div class="bottom-section">
 			<!-- Action Buttons -->
 			<div class="action-buttons">
+				<!-- Outflow/Inflow Toggle -->
+				<div class="toggle-group">
+					<button 
+						type="button" 
+						class="toggle-btn {!formData.isInflow ? 'active' : ''}"
+						onclick={() => formData.isInflow = false}
+					>
+						<span class="toggle-icon">−</span>
+						Outflow
+					</button>
+					<button 
+						type="button" 
+						class="toggle-btn {formData.isInflow ? 'active' : ''}"
+						onclick={() => formData.isInflow = true}
+					>
+						<span class="toggle-icon">+</span>
+						Inflow
+					</button>
+				</div>
+				
 				{#if editingTransaction}
 					<button type="button" onclick={openDeleteConfirm} class="btn-delete">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -909,31 +905,28 @@
 	}
 
 	/* Toggle */
-	.toggle-container {
-		padding: 16px 16px 0;
-	}
-
 	.toggle-group {
 		display: flex;
 		background-color: var(--color-bg-tertiary);
 		border-radius: 24px;
-		padding: 4px;
+		padding: 3px;
+		flex-shrink: 0;
 	}
 
 	.toggle-btn {
-		flex: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
-		padding: 10px;
+		gap: 4px;
+		padding: 8px 12px;
 		border: none;
 		border-radius: 20px;
-		font-size: 14px;
+		font-size: 13px;
 		font-weight: 500;
 		background: none;
 		color: var(--color-text-muted);
 		transition: all 0.2s;
+		white-space: nowrap;
 	}
 
 	.toggle-btn.active {
@@ -942,7 +935,7 @@
 	}
 
 	.toggle-icon {
-		font-size: 18px;
+		font-size: 16px;
 	}
 
 	/* Amount Display */
@@ -1117,23 +1110,25 @@
 	/* Action Buttons */
 	.action-buttons {
 		display: flex;
-		justify-content: flex-end;
-		gap: 12px;
+		align-items: center;
+		gap: 8px;
 		padding: 12px 16px;
+		flex-wrap: wrap;
 	}
 
 	.btn-delete {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 12px 20px;
+		gap: 6px;
+		padding: 10px 14px;
 		background-color: rgba(239, 68, 68, 0.1);
 		color: var(--color-danger);
 		border: none;
 		border-radius: 24px;
-		font-size: 15px;
+		font-size: 14px;
 		font-weight: 500;
-		min-height: 48px;
+		min-height: 44px;
+		flex-shrink: 0;
 	}
 
 	.btn-delete:active {
@@ -1148,15 +1143,18 @@
 	.btn-save {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 12px 24px;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 16px;
 		background-color: var(--color-primary);
 		color: white;
 		border: none;
 		border-radius: 24px;
-		font-size: 15px;
+		font-size: 14px;
 		font-weight: 500;
-		min-height: 48px;
+		min-height: 44px;
+		flex: 1;
+		min-width: 80px;
 	}
 
 	.btn-save:active {

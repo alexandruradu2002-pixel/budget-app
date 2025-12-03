@@ -104,15 +104,6 @@
 		}
 	}
 
-	// Navigate months
-	function previousMonth() {
-		currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-	}
-
-	function nextMonth() {
-		currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-	}
-
 	// Load data on mount and when month changes
 	$effect(() => {
 		const _ = monthRange(); // depend on monthRange
@@ -148,22 +139,13 @@
 
 <div class="reports-page">
 	<!-- Header -->
-	<PageHeader title="Reflect">
-		<HeaderButton label="More options">
-			<svg fill="currentColor" viewBox="0 0 24 24">
-				<circle cx="12" cy="5" r="1.5"/>
-				<circle cx="12" cy="12" r="1.5"/>
-				<circle cx="12" cy="19" r="1.5"/>
-			</svg>
-		</HeaderButton>
-	</PageHeader>
+	<PageHeader title="Reflect" />
 
 	{#if loading}
 		<LoadingState message="Loading spending data..." />
 	{:else}
 		<div class="reports-content">
-			<!-- Spending Breakdown Card -->
-			<div class="report-card">
+			<a href="/reports/spending" class="report-card">
 				<div class="card-header">
 					<div class="card-icon purple">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -172,19 +154,10 @@
 					</div>
 					<span class="card-title">Spending Breakdown</span>
 					
-					<!-- Month Navigation -->
-					<div class="month-nav">
-						<button class="month-nav-btn" onclick={previousMonth} aria-label="Previous month">
-							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-							</svg>
-						</button>
-						<button class="month-nav-btn" onclick={nextMonth} aria-label="Next month">
-							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-							</svg>
-						</button>
-					</div>
+					<!-- Right arrow to navigate to detail page -->
+					<svg class="card-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
 				</div>
 				
 				<div class="card-body">
@@ -230,7 +203,7 @@
 						</div>
 					{/if}
 				</div>
-			</div>
+			</a>
 
 			<!-- Net Worth Card -->
 			<a href="/reports/net-worth" class="report-card">
@@ -481,36 +454,6 @@
 
 	.progress-segment.empty {
 		background-color: var(--color-bg-tertiary);
-	}
-
-	/* Month Navigation */
-	.month-nav {
-		display: flex;
-		gap: 4px;
-	}
-
-	.month-nav-btn {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background-color: var(--color-bg-tertiary);
-		border: none;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		color: var(--color-text-secondary);
-		transition: background-color 0.2s, color 0.2s;
-	}
-
-	.month-nav-btn:hover {
-		background-color: var(--color-primary);
-		color: var(--color-text-primary);
-	}
-
-	.month-nav-btn svg {
-		width: 16px;
-		height: 16px;
 	}
 
 	/* Categories Section */

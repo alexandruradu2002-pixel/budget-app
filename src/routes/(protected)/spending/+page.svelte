@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
-	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
+	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector } from '$lib/components';
 	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 
 	// Transaction payload type for save operations
@@ -30,6 +30,12 @@
 	let searchQuery = $state('');
 	let showSearch = $state(false);
 	
+	// Bulk move mode
+	let bulkMoveMode = $state(false);
+	let selectedTransactionIds = $state<Set<number>>(new Set());
+	let showCategorySelector = $state(false);
+	let bulkMoving = $state(false);
+	
 	// Pagination state
 	let totalTransactions = $state(0);
 	let currentOffset = $state(0);
@@ -42,6 +48,14 @@
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isSearching = $state(false);
 
+	// Helper to check if transaction is an adjustment (should be hidden)
+	function isAdjustmentTransaction(tx: Transaction): boolean {
+		const desc = tx.description?.toLowerCase() || '';
+		return desc.includes('reconciliation adjustment') || 
+			   desc.includes('closing balance') ||
+			   desc.includes('starting balance');
+	}
+
 	// Format amount with account's currency
 	function formatAmountWithCurrency(amount: number, accountId: number): string {
 		const account = accounts.find(a => a.id === accountId);
@@ -49,15 +63,102 @@
 		return formatAmountUtil(amount, currency);
 	}
 
+	// Filter out adjustment transactions, then group by date
+	let filteredTransactions = $derived(transactions.filter(tx => !isAdjustmentTransaction(tx)));
+	
 	// Group transactions by date (no local filtering - search is done server-side)
 	let groupedTransactions = $derived.by(() => {
 		const groups: Record<string, Transaction[]> = {};
-		for (const tx of transactions) {
+		for (const tx of filteredTransactions) {
 			if (!groups[tx.date]) groups[tx.date] = [];
 			groups[tx.date].push(tx);
 		}
 		return Object.entries(groups).sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime());
 	});
+
+	// Count of selected transactions
+	let selectedCount = $derived(selectedTransactionIds.size);
+
+	// Toggle bulk move mode
+	function toggleBulkMoveMode() {
+		bulkMoveMode = !bulkMoveMode;
+		if (!bulkMoveMode) {
+			selectedTransactionIds = new Set();
+		}
+	}
+
+	// Toggle transaction selection
+	function toggleTransactionSelection(txId: number, event?: Event) {
+		event?.stopPropagation();
+		const newSet = new Set(selectedTransactionIds);
+		if (newSet.has(txId)) {
+			newSet.delete(txId);
+		} else {
+			newSet.add(txId);
+		}
+		selectedTransactionIds = newSet;
+	}
+
+	// Select all visible transactions
+	function selectAllTransactions() {
+		const allIds = filteredTransactions.map(tx => tx.id);
+		selectedTransactionIds = new Set(allIds);
+	}
+
+	// Deselect all
+	function deselectAllTransactions() {
+		selectedTransactionIds = new Set();
+	}
+
+	// Open category selector for bulk move
+	function openBulkCategorySelector() {
+		if (selectedCount === 0) return;
+		showCategorySelector = true;
+	}
+
+	// Handle bulk category change
+	async function handleBulkCategoryChange(category: Category) {
+		showCategorySelector = false;
+		if (!category?.id || selectedCount === 0) return;
+		
+		bulkMoving = true;
+		try {
+			// Update each selected transaction
+			const promises = Array.from(selectedTransactionIds).map(txId => {
+				const tx = transactions.find(t => t.id === txId);
+				if (!tx) return Promise.resolve();
+				
+				// Send all required fields for the transaction update
+				return fetch('/api/transactions', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						id: txId,
+						account_id: tx.account_id,
+						amount: tx.amount,
+						description: tx.description,
+						date: tx.date,
+						category_id: category.id,
+						payee: tx.payee || tx.description,
+						memo: tx.memo || tx.notes || '',
+						cleared: tx.cleared || 'uncleared',
+						notes: tx.notes || ''
+					})
+				});
+			});
+			
+			await Promise.all(promises);
+			
+			// Reset and reload
+			selectedTransactionIds = new Set();
+			bulkMoveMode = false;
+			await reloadWithCurrentSearch();
+		} catch (error) {
+			console.error('Failed to bulk move transactions:', error);
+		} finally {
+			bulkMoving = false;
+		}
+	}
 
 	// Debounced search function
 	function handleSearchInput(value: string) {
@@ -207,12 +308,36 @@
 
 <div class="spending-page">
 	<PageHeader title="Spending">
+		<HeaderButton label="Bulk Move" onclick={toggleBulkMoveMode}>
+			{#if bulkMoveMode}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			{:else}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+				</svg>
+			{/if}
+		</HeaderButton>
 		<HeaderButton label="Search" onclick={() => { showSearch = !showSearch; if (!showSearch) searchQuery = ''; }}>
 			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
 		</HeaderButton>
 	</PageHeader>
+
+	<!-- Bulk Move Selection Bar -->
+	{#if bulkMoveMode}
+		<div class="bulk-selection-bar">
+			<div class="bulk-selection-info">
+				<span class="selection-count">{selectedCount} selected</span>
+				<div class="selection-actions">
+					<button class="select-action-btn" onclick={selectAllTransactions}>Select All</button>
+					<button class="select-action-btn" onclick={deselectAllTransactions}>Clear</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Search Bar -->
 	{#if showSearch}
@@ -272,7 +397,18 @@
 					</div>
 					<div class="transactions-card">
 						{#each txs as tx, i}
-							<button class="transaction-row" onclick={() => openEditModal(tx)}>
+							<button class="transaction-row" class:selected={bulkMoveMode && selectedTransactionIds.has(tx.id)} onclick={(e) => bulkMoveMode ? toggleTransactionSelection(tx.id, e) : openEditModal(tx)}>
+								{#if bulkMoveMode}
+									<span class="checkbox-wrapper">
+										<span class="checkbox" class:checked={selectedTransactionIds.has(tx.id)}>
+											{#if selectedTransactionIds.has(tx.id)}
+												<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+												</svg>
+											{/if}
+										</span>
+									</span>
+								{/if}
 								<div class="transaction-content">
 									<div class="transaction-main">
 										<span class="transaction-description">{tx.description}</span>
@@ -330,8 +466,39 @@
 	</div>
 </div>
 
-<!-- Floating Action Button -->
-<FloatingActionButton onclick={openAddModal} label="Transaction" />
+<!-- Floating Action Button (hidden in bulk mode) -->
+{#if !bulkMoveMode}
+	<FloatingActionButton onclick={openAddModal} label="Transaction" />
+{/if}
+
+<!-- Bulk Move Bottom Bar -->
+{#if bulkMoveMode && selectedCount > 0}
+	<div class="bulk-move-bar">
+		<button class="bulk-move-btn" onclick={openBulkCategorySelector} disabled={bulkMoving}>
+			{#if bulkMoving}
+				<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+					<circle cx="12" cy="12" r="10" stroke-width="2" stroke-opacity="0.3" />
+					<path stroke-linecap="round" stroke-width="2" d="M12 2a10 10 0 0 1 10 10" />
+				</svg>
+				Moving...
+			{:else}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+				</svg>
+				Move {selectedCount} to Category
+			{/if}
+		</button>
+	</div>
+{/if}
+
+<!-- Category Selector for Bulk Move -->
+{#if showCategorySelector}
+	<CategorySelector
+		bind:show={showCategorySelector}
+		selectedCategoryId={0}
+		onSelect={handleBulkCategoryChange}
+	/>
+{/if}
 
 <TransactionModal bind:show={showAddModal} {editingTransaction} {accounts} {categories} onSave={handleSaveTransaction} onDelete={handleDeleteTransaction} onClose={handleCloseModal} />
 
@@ -672,5 +839,133 @@
 			padding: 0 24px 20px;
 			width: 100%;
 		}
+	}
+
+	/* Bulk Selection Bar */
+	.bulk-selection-bar {
+		padding: 12px 16px;
+		background: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.bulk-selection-info {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.selection-count {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-primary);
+	}
+
+	.selection-actions {
+		display: flex;
+		gap: 12px;
+	}
+
+	.select-action-btn {
+		background: none;
+		border: none;
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: 6px;
+		transition: all 0.15s ease;
+	}
+
+	.select-action-btn:hover {
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+	}
+
+	/* Checkbox */
+	.checkbox-wrapper {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding-right: 12px;
+		flex-shrink: 0;
+	}
+
+	.checkbox {
+		width: 22px;
+		height: 22px;
+		border: 2px solid var(--color-border);
+		border-radius: 6px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.15s ease;
+		background: var(--color-bg-primary);
+	}
+
+	.checkbox.checked {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+
+	.checkbox svg {
+		width: 14px;
+		height: 14px;
+		color: white;
+	}
+
+	.transaction-row.selected {
+		background: rgba(99, 102, 241, 0.1);
+	}
+
+	/* Bulk Move Bottom Bar */
+	.bulk-move-bar {
+		position: fixed;
+		bottom: 70px;
+		left: 0;
+		right: 0;
+		padding: 12px 16px;
+		background: var(--color-bg-secondary);
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		justify-content: center;
+		z-index: 50;
+	}
+
+	.bulk-move-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px 24px;
+		background: var(--color-primary);
+		color: white;
+		border: none;
+		border-radius: 12px;
+		font-size: 15px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		min-width: 200px;
+	}
+
+	.bulk-move-btn:hover:not(:disabled) {
+		background: var(--color-primary-hover);
+	}
+
+	.bulk-move-btn:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.bulk-move-btn svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.bulk-move-btn .spinner {
+		width: 18px;
+		height: 18px;
+		animation: spin 1s linear infinite;
 	}
 </style>
