@@ -3,6 +3,7 @@
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
 	import { formatCurrency, formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
 	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
+	import { currencyStore } from '$lib/stores';
 
 	interface CurrencyTotal {
 		currency: string;
@@ -287,7 +288,7 @@
 							<div class="account-row reorder-row" class:has-border={index > 0}>
 								<div class="account-info">
 									<span class="account-name">{account.name}</span>
-									{#if account.currency && account.currency !== 'RON'}
+									{#if account.currency && account.currency !== currencyStore.value}
 										<span class="account-currency">{account.currency}</span>
 									{/if}
 								</div>
@@ -318,7 +319,7 @@
 							<div class="account-row edit-row" class:has-border={index > 0}>
 								<div class="account-info">
 									<span class="account-name">{account.name}</span>
-									{#if account.currency && account.currency !== 'RON'}
+									{#if account.currency && account.currency !== currencyStore.value}
 										<span class="account-currency">{account.currency}</span>
 									{/if}
 								</div>
@@ -336,7 +337,7 @@
 							<a href="/accounts/{account.id}" class="account-row" class:has-border={index > 0}>
 								<div class="account-info">
 									<span class="account-name">{account.name}</span>
-									{#if account.currency && account.currency !== 'RON'}
+									{#if account.currency && account.currency !== currencyStore.value}
 										<span class="account-currency">{account.currency}</span>
 									{/if}
 								</div>
@@ -375,10 +376,10 @@
 					
 					{#if showClosedAccounts}
 						{#each closedAccounts as account (account.id)}
-							<div class="account-row closed has-border">
+							<a href="/accounts/{account.id}" class="account-row closed has-border">
 								<div class="account-info">
 									<span class="account-name muted">{account.name}</span>
-									{#if account.currency && account.currency !== 'RON'}
+									{#if account.currency && account.currency !== currencyStore.value}
 										<span class="account-currency">{account.currency}</span>
 									{/if}
 								</div>
@@ -386,7 +387,7 @@
 									<span class="account-balance muted">{formatAccountBalance(account)}</span>
 									<button 
 										class="reopen-button"
-										onclick={() => reopenAccount(account.id)}
+										onclick={(e) => { e.preventDefault(); reopenAccount(account.id); }}
 										aria-label="Reopen account"
 									>
 										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -394,7 +395,7 @@
 										</svg>
 									</button>
 								</div>
-							</div>
+							</a>
 						{/each}
 					{/if}
 				</div>
