@@ -2,6 +2,8 @@
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector, PayeeSelector } from '$lib/components';
 	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 
 	// Transaction payload type for save operations
 	interface TransactionPayload {
@@ -35,6 +37,7 @@
 	let selectedTransactionIds = $state<Set<number>>(new Set());
 	let showCategorySelector = $state(false);
 	let showPayeeSelector = $state(false);
+	let payeeSelectorRef = $state<{ openWithFocus: () => void } | null>(null);
 	let bulkMoving = $state(false);
 	
 	// Pagination state
@@ -48,6 +51,11 @@
 	// Search state
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isSearching = $state(false);
+	
+	// Filter state
+	let showFilterDropdown = $state(false);
+	let selectedCategoryFilter = $state<number | null>(null);
+	let selectedCategoryFilterName = $state<string>('');
 
 	// Helper to check if transaction is an adjustment (should be hidden)
 	function isAdjustmentTransaction(tx: Transaction): boolean {
@@ -164,7 +172,7 @@
 	// Open payee selector for bulk change
 	function openBulkPayeeSelector() {
 		if (selectedCount === 0) return;
-		showPayeeSelector = true;
+		payeeSelectorRef?.openWithFocus();
 	}
 
 	// Handle bulk payee change
@@ -222,8 +230,22 @@
 		
 		// Debounce: wait 300ms after user stops typing
 		searchTimeout = setTimeout(() => {
-			searchTransactions(value);
+			updateUrlAndSearch(value, selectedCategoryFilter);
 		}, 300);
+	}
+
+	// Update URL with current filters
+	function updateUrlAndSearch(query: string, categoryId: number | null) {
+		const params = new URLSearchParams();
+		if (query.trim()) {
+			params.set('search', query.trim());
+		}
+		if (categoryId !== null) {
+			params.set('category', categoryId.toString());
+		}
+		const newUrl = params.toString() ? `?${params.toString()}` : '/spending';
+		goto(newUrl, { replaceState: true, keepFocus: true });
+		searchTransactions(query);
 	}
 
 	async function searchTransactions(query: string) {
@@ -232,7 +254,8 @@
 		
 		try {
 			const searchParam = query.trim() ? `&search=${encodeURIComponent(query.trim())}` : '';
-			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}`);
+			const categoryParam = selectedCategoryFilter ? `&categoryId=${selectedCategoryFilter}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}${categoryParam}`);
 			if (res.ok) {
 				const data = await res.json();
 				transactions = data.transactions;
@@ -245,12 +268,17 @@
 		}
 	}
 
-	async function loadData() {
+	async function loadData(initialSearch?: string, initialCategoryId?: number | null) {
 		try {
 			// Reset pagination when loading fresh data
 			currentOffset = 0;
+			
+			// Build query params for transactions
+			const searchParam = initialSearch ? `&search=${encodeURIComponent(initialSearch)}` : '';
+			const categoryParam = initialCategoryId ? `&categoryId=${initialCategoryId}` : '';
+			
 			const [txRes, accRes, catRes] = await Promise.all([
-				fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0`),
+				fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}${categoryParam}`),
 				fetch('/api/accounts'),
 				fetch('/api/categories')
 			]);
@@ -260,7 +288,16 @@
 				totalTransactions = data.total;
 			}
 			if (accRes.ok) accounts = (await accRes.json()).accounts;
-			if (catRes.ok) categories = (await catRes.json()).categories;
+			if (catRes.ok) {
+				categories = (await catRes.json()).categories;
+				// Set category filter name if we have initial category
+				if (initialCategoryId) {
+					const cat = categories.find(c => c.id === initialCategoryId);
+					if (cat) {
+						selectedCategoryFilterName = cat.name;
+					}
+				}
+			}
 		} catch (error) {
 			console.error('Failed to load data:', error);
 		} finally {
@@ -275,7 +312,8 @@
 		try {
 			const newOffset = currentOffset + PAGE_SIZE;
 			const searchParam = searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : '';
-			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}${searchParam}`);
+			const categoryParam = selectedCategoryFilter ? `&categoryId=${selectedCategoryFilter}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}${searchParam}${categoryParam}`);
 			if (res.ok) {
 				const data = await res.json();
 				transactions = [...transactions, ...data.transactions];
@@ -315,7 +353,8 @@
 		currentOffset = 0;
 		try {
 			const searchParam = searchQuery.trim() ? `&search=${encodeURIComponent(searchQuery.trim())}` : '';
-			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}`);
+			const categoryParam = selectedCategoryFilter ? `&categoryId=${selectedCategoryFilter}` : '';
+			const res = await fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}${categoryParam}`);
 			if (res.ok) {
 				const data = await res.json();
 				transactions = data.transactions;
@@ -324,6 +363,21 @@
 		} catch (error) {
 			console.error('Failed to reload transactions:', error);
 		}
+	}
+
+	// Apply category filter
+	function applyCategoryFilter(categoryId: number | null, categoryName: string) {
+		selectedCategoryFilter = categoryId;
+		selectedCategoryFilterName = categoryName;
+		showFilterDropdown = false;
+		updateUrlAndSearch(searchQuery, categoryId);
+	}
+
+	// Clear category filter
+	function clearCategoryFilter() {
+		selectedCategoryFilter = null;
+		selectedCategoryFilterName = '';
+		updateUrlAndSearch(searchQuery, null);
 	}
 
 	function openEditModal(tx: Transaction) {
@@ -354,7 +408,23 @@
 		}
 	}
 
-	$effect(() => { loadData(); });
+	// Initialize from URL params on mount
+	$effect(() => {
+		const urlParams = $page.url.searchParams;
+		const initialSearch = urlParams.get('search') || '';
+		const initialCategoryId = urlParams.get('category') ? parseInt(urlParams.get('category')!) : null;
+		
+		// Set initial state
+		searchQuery = initialSearch;
+		selectedCategoryFilter = initialCategoryId;
+		
+		// Show search bar if there are filters
+		if (initialSearch || initialCategoryId !== null) {
+			showSearch = true;
+		}
+		
+		loadData(initialSearch, initialCategoryId);
+	});
 </script>
 
 <div class="spending-page">
@@ -370,7 +440,13 @@
 				</svg>
 			{/if}
 		</HeaderButton>
-		<HeaderButton label="Search" onclick={() => { showSearch = !showSearch; if (!showSearch) searchQuery = ''; }}>
+		<HeaderButton label="Search" onclick={() => { 
+			showSearch = !showSearch; 
+			if (!showSearch && searchQuery) {
+				searchQuery = '';
+				updateUrlAndSearch('', selectedCategoryFilter);
+			}
+		}}>
 			<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
 			</svg>
@@ -393,29 +469,90 @@
 	<!-- Search Bar -->
 	{#if showSearch}
 		<div class="search-container">
-			<div class="search-wrapper">
-				<svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-				</svg>
-				<input 
-					id="search-input" 
-					type="text" 
-					placeholder="Search all transactions..." 
-					value={searchQuery}
-					oninput={(e) => handleSearchInput(e.currentTarget.value)}
-					class="search-input"
-				/>
-				{#if isSearching}
-					<div class="search-spinner"></div>
-				{:else if searchQuery}
-					<button class="search-clear" onclick={() => { searchQuery = ''; searchTransactions(''); }} aria-label="Clear search">
+			<div class="search-row">
+				<div class="search-wrapper">
+					<svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+					</svg>
+					<input 
+						id="search-input" 
+						type="text" 
+						placeholder="Search all transactions..." 
+						value={searchQuery}
+						oninput={(e) => handleSearchInput(e.currentTarget.value)}
+						class="search-input"
+					/>
+					{#if isSearching}
+						<div class="search-spinner"></div>
+					{:else if searchQuery}
+						<button class="search-clear" onclick={() => { searchQuery = ''; updateUrlAndSearch('', selectedCategoryFilter); }} aria-label="Clear search">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					{/if}
+				</div>
+				<!-- Filter Button -->
+				<div class="filter-container">
+					<button 
+						class="filter-btn" 
+						class:active={selectedCategoryFilter !== null}
+						onclick={() => showFilterDropdown = !showFilterDropdown}
+						aria-label="Filter by category"
+					>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+						</svg>
+						{#if selectedCategoryFilter !== null}
+							<span class="filter-badge"></span>
+						{/if}
+					</button>
+					
+					<!-- Filter Dropdown -->
+					{#if showFilterDropdown}
+						<div class="filter-backdrop" onclick={() => showFilterDropdown = false} role="presentation"></div>
+						<div class="filter-dropdown">
+							<div class="filter-header">
+								<span class="filter-title">Filter by Category</span>
+								{#if selectedCategoryFilter !== null}
+									<button class="filter-clear-btn" onclick={clearCategoryFilter}>Clear</button>
+								{/if}
+							</div>
+							<div class="filter-options">
+								{#each categories as category (category.id)}
+									<button 
+										class="filter-option"
+										class:selected={selectedCategoryFilter === category.id}
+										onclick={() => applyCategoryFilter(category.id, category.name)}
+									>
+										<span class="filter-option-name">{category.name}</span>
+										{#if selectedCategoryFilter === category.id}
+											<svg class="filter-check" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+			
+			<!-- Active Filter Chip -->
+			{#if selectedCategoryFilter !== null}
+				<div class="active-filter">
+					<span class="active-filter-label">Category:</span>
+					<span class="active-filter-value">{selectedCategoryFilterName}</span>
+					<button class="active-filter-remove" onclick={clearCategoryFilter} aria-label="Remove filter">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
-				{/if}
-			</div>
-			{#if searchQuery && !isSearching}
+				</div>
+			{/if}
+			
+			{#if (searchQuery || selectedCategoryFilter !== null) && !isSearching}
 				<div class="search-results-count">
 					{totalTransactions} result{totalTransactions !== 1 ? 's' : ''} found
 				</div>
@@ -565,14 +702,13 @@
 {/if}
 
 <!-- Payee Selector for Bulk Change -->
-{#if showPayeeSelector}
-	<PayeeSelector
-		bind:show={showPayeeSelector}
-		selectedPayee=""
-		{accounts}
-		onSelect={handleBulkPayeeChange}
-	/>
-{/if}
+<PayeeSelector
+	bind:this={payeeSelectorRef}
+	bind:show={showPayeeSelector}
+	selectedPayee=""
+	{accounts}
+	onSelect={handleBulkPayeeChange}
+/>
 
 <TransactionModal bind:show={showAddModal} {editingTransaction} {accounts} {categories} onSave={handleSaveTransaction} onDelete={handleDeleteTransaction} onClose={handleCloseModal} />
 
@@ -590,10 +726,17 @@
 		padding: 0 16px 16px;
 	}
 
+	.search-row {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+	}
+
 	.search-wrapper {
 		position: relative;
 		display: flex;
 		align-items: center;
+		flex: 1;
 	}
 
 	.search-icon {
@@ -667,7 +810,192 @@
 	.search-results-count {
 		font-size: 12px;
 		color: var(--color-text-muted);
-		padding: 4px 0 0 36px;
+		padding: 4px 0 0 14px;
+	}
+
+	/* Filter Button */
+	.filter-container {
+		position: relative;
+	}
+
+	.filter-btn {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 48px;
+		height: 48px;
+		background-color: var(--color-bg-secondary);
+		border: 1px solid transparent;
+		border-radius: 14px;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.filter-btn svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.filter-btn:hover, .filter-btn:active {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+	}
+
+	.filter-btn.active {
+		background-color: var(--color-primary);
+		color: white;
+		border-color: var(--color-primary);
+	}
+
+	.filter-badge {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 8px;
+		height: 8px;
+		background-color: var(--color-primary);
+		border-radius: 50%;
+	}
+
+	.filter-btn.active .filter-badge {
+		display: none;
+	}
+
+	/* Filter Dropdown */
+	.filter-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+	}
+
+	.filter-dropdown {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		width: 280px;
+		max-height: 400px;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 16px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+		z-index: 101;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.filter-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 16px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.filter-title {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.filter-clear-btn {
+		padding: 6px 12px;
+		background-color: var(--color-bg-secondary);
+		border: none;
+		border-radius: 8px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--color-primary);
+		cursor: pointer;
+	}
+
+	.filter-clear-btn:hover {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.filter-options {
+		flex: 1;
+		overflow-y: auto;
+		padding: 8px;
+	}
+
+	.filter-option {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 12px 14px;
+		background: none;
+		border: none;
+		border-radius: 10px;
+		text-align: left;
+		cursor: pointer;
+		transition: background-color 0.15s ease;
+	}
+
+	.filter-option:hover {
+		background-color: var(--color-bg-secondary);
+	}
+
+	.filter-option.selected {
+		background-color: var(--color-bg-secondary);
+	}
+
+	.filter-option-name {
+		font-size: 15px;
+		color: var(--color-text-primary);
+	}
+
+	.filter-check {
+		width: 20px;
+		height: 20px;
+		color: var(--color-primary);
+	}
+
+	/* Active Filter Chip */
+	.active-filter {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 10px;
+		padding: 8px 12px;
+		background-color: var(--color-bg-secondary);
+		border-radius: 20px;
+		font-size: 13px;
+	}
+
+	.active-filter-label {
+		color: var(--color-text-muted);
+	}
+
+	.active-filter-value {
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.active-filter-remove {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		border-radius: 50%;
+		cursor: pointer;
+	}
+
+	.active-filter-remove svg {
+		width: 12px;
+		height: 12px;
+		color: var(--color-text-muted);
+	}
+
+	.active-filter-remove:hover {
+		background-color: var(--color-border);
 	}
 
 	/* Transactions List */

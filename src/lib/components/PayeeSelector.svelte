@@ -64,6 +64,15 @@
 		}
 	});
 
+	// Track if we need to focus the input (set by parent on user interaction)
+	let shouldFocusOnOpen = $state(false);
+	
+	// Export a function to open with focus (call this from user interaction)
+	export function openWithFocus() {
+		shouldFocusOnOpen = true;
+		show = true;
+	}
+
 	// Load payees when modal opens
 	$effect(() => {
 		if (show) {
@@ -74,10 +83,18 @@
 			if (typeof window !== 'undefined' && window.location.hash !== '#payee-selector') {
 				history.pushState({ payeeSelector: true }, '', '#payee-selector');
 			}
-			// Focus search input to open keyboard on mobile
-			setTimeout(() => {
-				searchInputRef?.focus();
-			}, 100);
+			// Focus search input - this works when triggered by user interaction
+			if (shouldFocusOnOpen) {
+				// Use requestAnimationFrame for better timing on mobile
+				requestAnimationFrame(() => {
+					searchInputRef?.focus();
+					// On iOS, we may need a slight delay
+					setTimeout(() => {
+						searchInputRef?.focus();
+					}, 50);
+				});
+				shouldFocusOnOpen = false;
+			}
 		}
 	});
 
