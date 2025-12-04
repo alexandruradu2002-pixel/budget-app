@@ -175,11 +175,11 @@
 			const data = await response.json();
 			const transactions = data.transactions || [];
 
-			// Group by category and sum amounts
+			// Group by category and sum amounts (keeping sign for net calculation)
 			const categoryMap = new Map<number, { name: string; amount: number; color: string }>();
 			
 			for (const tx of transactions) {
-				if (tx.amount >= 0) continue;
+				// Include all transactions with a category (both inflows and outflows)
 				if (!tx.category_id || !expenseCategoryIds.has(tx.category_id)) continue;
 				
 				// Apply filter - skip if category is not in the filter
@@ -188,7 +188,8 @@
 				const categoryId = tx.category_id;
 				const categoryName = tx.category_name || 'Uncategorized';
 				const categoryColor = tx.category_color || '#6B7280';
-				const amount = Math.abs(tx.amount);
+				// Keep the original amount (negative for outflows, positive for inflows/refunds)
+				const amount = tx.amount;
 				
 				if (categoryMap.has(categoryId)) {
 					categoryMap.get(categoryId)!.amount += amount;
@@ -197,16 +198,18 @@
 				}
 			}
 
-			// Convert to array and sort by amount descending
+			// Convert to array - amount is net (negative means spent, positive means refunded more than spent)
+			// We negate to show positive values for spending
 			const categoriesArray = Array.from(categoryMap.entries())
 				.map(([id, data], index) => ({
 					id: id,
 					name: data.name,
-					amount: data.amount,
+					amount: -data.amount, // Negate so spending shows as positive
 					color: data.color,
 					colorVar: chartColors[index % chartColors.length],
 					percent: 0
 				}))
+				.filter(cat => cat.amount > 0) // Only show categories with net spending
 				.sort((a, b) => b.amount - a.amount);
 
 			// Calculate total and percentages

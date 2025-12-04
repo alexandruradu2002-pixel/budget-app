@@ -108,6 +108,7 @@ export const POST: RequestHandler = async (event) => {
 	const tags = data.tags ? JSON.stringify(data.tags) : null;
 	const isTransfer = data.is_transfer ?? false;
 	const transferAccountId = data.transfer_account_id ?? null;
+	const convertedAmount = data.converted_amount ?? null;
 
 	// Verify account belongs to user
 	await verifyOwnership(db, 'accounts', account_id, user.userId, 'Account');
@@ -122,50 +123,65 @@ export const POST: RequestHandler = async (event) => {
 		// Verify transfer target account belongs to user
 		await verifyOwnership(db, 'accounts', transferAccountId, user.userId, 'Target account');
 
-		// Get account names for better descriptions
+		// Get account details including currency
 		const sourceAccount = await db.execute({
-			sql: 'SELECT name FROM accounts WHERE id = ? AND user_id = ?',
+			sql: 'SELECT name, currency FROM accounts WHERE id = ? AND user_id = ?',
 			args: [account_id, user.userId]
 		});
 		const targetAccount = await db.execute({
-			sql: 'SELECT name FROM accounts WHERE id = ? AND user_id = ?',
+			sql: 'SELECT name, currency FROM accounts WHERE id = ? AND user_id = ?',
 			args: [transferAccountId, user.userId]
 		});
 
 		const sourceAccountName = sourceAccount.rows[0]?.name as string || 'Account';
 		const targetAccountName = targetAccount.rows[0]?.name as string || 'Account';
+		const sourceCurrency = sourceAccount.rows[0]?.currency as string || 'RON';
+		const targetCurrency = targetAccount.rows[0]?.currency as string || 'RON';
+
+		// Determine the target amount (either converted amount or same as source)
+		const sourceAmount = Math.abs(amount);
+		let targetAmount = sourceAmount;
+
+		// If currencies are different, use converted amount
+		if (sourceCurrency !== targetCurrency && convertedAmount !== null) {
+			targetAmount = Math.abs(convertedAmount);
+		}
 
 		// Create outflow transaction (from source account)
 		const outflowDescription = `Transfer to: ${targetAccountName}`;
 		const outflowResult = await db.execute({
 			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, transfer_account_id)
 				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			args: [user.userId, account_id, -Math.abs(amount), outflowDescription, date, outflowDescription, memo, cleared, notes, tags, transferAccountId]
+			args: [user.userId, account_id, -sourceAmount, outflowDescription, date, outflowDescription, memo, cleared, notes, tags, transferAccountId]
 		});
 
-		// Create inflow transaction (to target account)
+		// Create inflow transaction (to target account) with converted amount
 		const inflowDescription = `Transfer from: ${sourceAccountName}`;
 		const inflowResult = await db.execute({
 			sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, transfer_account_id)
 				  VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			args: [user.userId, transferAccountId, Math.abs(amount), inflowDescription, date, inflowDescription, memo, cleared, notes, tags, account_id]
+			args: [user.userId, transferAccountId, targetAmount, inflowDescription, date, inflowDescription, memo, cleared, notes, tags, account_id]
 		});
 
-		// Update source account balance (decrease)
+		// Update source account balance (decrease by source amount)
 		await db.execute({
 			sql: 'UPDATE accounts SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-			args: [Math.abs(amount), account_id]
+			args: [sourceAmount, account_id]
 		});
 
-		// Update target account balance (increase)
+		// Update target account balance (increase by target/converted amount)
 		await db.execute({
 			sql: 'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-			args: [Math.abs(amount), transferAccountId]
+			args: [targetAmount, transferAccountId]
 		});
 
 		return createdResponse({ 
 			id: Number(outflowResult.lastInsertRowid), 
 			transfer_id: Number(inflowResult.lastInsertRowid),
+			source_currency: sourceCurrency,
+			target_currency: targetCurrency,
+			source_amount: sourceAmount,
+			target_amount: targetAmount,
 			message: 'Transfer created' 
 		});
 	}

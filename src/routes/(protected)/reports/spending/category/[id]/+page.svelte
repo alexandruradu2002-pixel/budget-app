@@ -79,16 +79,16 @@
 			const data = await response.json();
 			const allTransactions = data.transactions || [];
 			
-			// Filter only expenses (negative amounts)
+			// Include all transactions (both inflows and outflows), keep original amount
 			transactions = allTransactions
-				.filter((tx: { amount: number }) => tx.amount < 0)
 				.map((tx: { id: number; date: string; payee: string; amount: number; memo: string; account_name: string; category_id: number; account_id: number; cleared: string }) => ({
-					...tx,
-					amount: Math.abs(tx.amount)
+					...tx
 				}))
 				.sort((a: { date: string }, b: { date: string }) => new Date(b.date).getTime() - new Date(a.date).getTime());
 			
-			totalAmount = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+			// Total: negative amounts add to spending, positive amounts (refunds) subtract
+			// Since outflows are negative, we negate to get positive total
+			totalAmount = -transactions.reduce((sum, tx) => sum + tx.amount, 0);
 		} catch (err) {
 			console.error('Error loading transactions:', err);
 		} finally {
@@ -102,7 +102,7 @@
 			id: transaction.id,
 			date: transaction.date,
 			payee: transaction.payee,
-			amount: -transaction.amount, // Convert back to negative for editing
+			amount: transaction.amount,
 			memo: transaction.memo,
 			category_id: transaction.category_id,
 			account_id: transaction.account_id,
@@ -114,7 +114,7 @@
 			user_id: 1,
 			account_id: transaction.account_id,
 			category_id: transaction.category_id,
-			amount: -transaction.amount,
+			amount: transaction.amount,
 			description: transaction.payee || '',
 			date: transaction.date,
 			payee: transaction.payee,
@@ -226,7 +226,9 @@
 							{/if}
 						</div>
 						<div class="transaction-right">
-							<span class="transaction-amount">-{formatCurrency(transaction.amount)}</span>
+							<span class="transaction-amount" class:positive={transaction.amount > 0}>
+								{transaction.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(transaction.amount))}
+							</span>
 							<svg class="transaction-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 							</svg>
@@ -424,6 +426,10 @@
 		font-weight: 600;
 		color: var(--color-danger);
 		white-space: nowrap;
+	}
+
+	.transaction-amount.positive {
+		color: var(--color-success);
 	}
 
 	.transaction-chevron {

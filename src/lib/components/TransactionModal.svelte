@@ -75,6 +75,75 @@
 	// Delete confirmation dialog state
 	let showDeleteConfirm = $state(false);
 
+	// Multi-currency transfer state
+	let exchangeRates = $state<Record<string, number>>({});
+	let convertedAmount = $state('0');
+	let convertedCalcDisplay = $state('0');
+	let isConvertedNewInput = $state(true);
+	let userEditedConvertedAmount = $state(false);
+	let editingConvertedAmount = $state(false); // Toggle for which amount to edit
+
+	// Fetch exchange rates on mount
+	async function fetchExchangeRates() {
+		try {
+			const res = await fetch('/api/exchange-rates');
+			if (res.ok) {
+				const data = await res.json();
+				exchangeRates = data.rates || {};
+			}
+		} catch (e) {
+			console.error('Failed to fetch exchange rates:', e);
+		}
+	}
+
+	// Get currencies for source and target accounts
+	let sourceAccountCurrency = $derived(() => {
+		const account = accounts.find(a => a.id === formData.account_id);
+		return account?.currency || 'RON';
+	});
+
+	let targetAccountCurrency = $derived(() => {
+		if (!transferTargetAccountId) return null;
+		const account = accounts.find(a => a.id === transferTargetAccountId);
+		return account?.currency || 'RON';
+	});
+
+	// Check if currencies are different (multi-currency transfer)
+	let isMultiCurrencyTransfer = $derived(() => {
+		if (!isTransfer || !transferTargetAccountId) return false;
+		const sourceCurr = sourceAccountCurrency();
+		const targetCurr = targetAccountCurrency();
+		return sourceCurr !== targetCurr;
+	});
+
+	// Auto-calculate converted amount when source amount changes (if user hasn't manually edited)
+	$effect(() => {
+		if (isMultiCurrencyTransfer() && !userEditedConvertedAmount) {
+			const sourceCurr = sourceAccountCurrency();
+			const targetCurr = targetAccountCurrency();
+			const sourceAmt = parseInt(formData.amount) || 0;
+			
+			if (sourceCurr && targetCurr && exchangeRates[sourceCurr] && exchangeRates[targetCurr]) {
+				// Convert: source -> RON -> target
+				const amountInRON = sourceAmt * exchangeRates[sourceCurr];
+				const converted = Math.round(amountInRON / exchangeRates[targetCurr]);
+				convertedAmount = converted.toString();
+				convertedCalcDisplay = converted.toString();
+			} else {
+				// Same currency or no rates, use same amount
+				convertedAmount = sourceAmt.toString();
+				convertedCalcDisplay = sourceAmt.toString();
+			}
+		}
+	});
+
+	// Fetch exchange rates on component init
+	$effect(() => {
+		if (show && Object.keys(exchangeRates).length === 0) {
+			fetchExchangeRates();
+		}
+	});
+
 	// Fetch location and auto-complete when modal opens for new transaction
 	async function fetchLocationAndAutoComplete() {
 		if (!isGeolocationSupported()) {
@@ -163,6 +232,13 @@
 			// Reset transfer state
 			isTransfer = false;
 			transferTargetAccountId = null;
+
+			// Reset multi-currency state
+			convertedAmount = '0';
+			convertedCalcDisplay = '0';
+			isConvertedNewInput = true;
+			userEditedConvertedAmount = false;
+			editingConvertedAmount = false;
 
 			// Reset user category change tracking
 			userChangedCategory = false;
@@ -255,7 +331,66 @@
 	function updateAmountFromCalc() {
 		const num = parseInt(calcDisplay) || 0;
 		formData.amount = num.toString();
+		// Reset user edited flag when source amount changes, so conversion recalculates
+		userEditedConvertedAmount = false;
 	}
+
+	// Converted amount calculator functions (for multi-currency transfers)
+	function convertedCalcInput(digit: string) {
+		userEditedConvertedAmount = true;
+		if (isConvertedNewInput || convertedCalcDisplay === '0') {
+			convertedCalcDisplay = digit;
+			isConvertedNewInput = false;
+		} else {
+			if (convertedCalcDisplay.length >= 9) return;
+			convertedCalcDisplay += digit;
+		}
+		convertedAmount = (parseInt(convertedCalcDisplay) || 0).toString();
+	}
+
+	function convertedCalcBackspace() {
+		userEditedConvertedAmount = true;
+		if (convertedCalcDisplay.length > 1) {
+			convertedCalcDisplay = convertedCalcDisplay.slice(0, -1);
+		} else {
+			convertedCalcDisplay = '0';
+			isConvertedNewInput = true;
+		}
+		convertedAmount = (parseInt(convertedCalcDisplay) || 0).toString();
+	}
+
+	// Get target account's currency symbol
+	let targetAccountCurrencySymbol = $derived(() => {
+		if (!transferTargetAccountId) return '';
+		const account = accounts.find(a => a.id === transferTargetAccountId);
+		const currency = account?.currency || 'RON';
+		return getCurrencySymbol(currency);
+	});
+
+	// Formatted converted amount display
+	let displayConvertedAmount = $derived(() => {
+		const num = parseInt(convertedAmount) || 0;
+		const symbol = targetAccountCurrencySymbol();
+		const formatted = num.toLocaleString('ro-RO');
+		
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `+${symbol}${formatted}`;
+		}
+		return `+${formatted}${symbol}`;
+	});
+
+	// Calculate exchange rate display
+	let exchangeRateDisplay = $derived(() => {
+		const sourceCurr = sourceAccountCurrency();
+		const targetCurr = targetAccountCurrency();
+		if (!sourceCurr || !targetCurr || sourceCurr === targetCurr) return '';
+		
+		if (exchangeRates[sourceCurr] && exchangeRates[targetCurr]) {
+			const rate = exchangeRates[sourceCurr] / exchangeRates[targetCurr];
+			return `1 ${sourceCurr} = ${rate.toFixed(4)} ${targetCurr}`;
+		}
+		return '';
+	});
 
 	// Get current account's currency symbol
 	let selectedAccountCurrency = $derived(() => {
@@ -452,6 +587,14 @@
 			payload.transfer_account_id = transferTargetAccountId;
 			// For transfers, always use outflow from source (the amount will be inverted for target)
 			payload.amount = -Math.abs(amount);
+			
+			// Include converted amount for multi-currency transfers
+			if (isMultiCurrencyTransfer()) {
+				const convAmt = parseInt(convertedAmount) || 0;
+				if (convAmt > 0) {
+					payload.converted_amount = convAmt;
+				}
+			}
 		}
 
 		// Only include optional fields if they have values
@@ -562,6 +705,19 @@
 				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
 					{displayAmount()}
 				</span>
+				{#if isMultiCurrencyTransfer()}
+					<div class="conversion-arrow">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+						</svg>
+					</div>
+					<span class="amount-value converted inflow">
+						{displayConvertedAmount()}
+					</span>
+					{#if exchangeRateDisplay()}
+						<span class="exchange-rate-info">{exchangeRateDisplay()}</span>
+					{/if}
+				{/if}
 			</div>
 
 			<!-- Form Fields -->
@@ -696,25 +852,27 @@
 		<div class="bottom-section">
 			<!-- Action Buttons -->
 			<div class="action-buttons">
-				<!-- Outflow/Inflow Toggle -->
-				<div class="toggle-group">
-					<button 
-						type="button" 
-						class="toggle-btn {!formData.isInflow ? 'active' : ''}"
-						onclick={() => formData.isInflow = false}
-					>
-						<span class="toggle-icon">−</span>
-						Outflow
-					</button>
-					<button 
-						type="button" 
-						class="toggle-btn {formData.isInflow ? 'active' : ''}"
-						onclick={() => formData.isInflow = true}
-					>
-						<span class="toggle-icon">+</span>
-						Inflow
-					</button>
-				</div>
+				<!-- Outflow/Inflow Toggle (hidden for transfers - transfers are always outflow) -->
+				{#if !isTransfer}
+					<div class="toggle-group">
+						<button 
+							type="button" 
+							class="toggle-btn {!formData.isInflow ? 'active' : ''}"
+							onclick={() => formData.isInflow = false}
+						>
+							<span class="toggle-icon">−</span>
+							Outflow
+						</button>
+						<button 
+							type="button" 
+							class="toggle-btn {formData.isInflow ? 'active' : ''}"
+							onclick={() => formData.isInflow = true}
+						>
+							<span class="toggle-icon">+</span>
+							Inflow
+						</button>
+					</div>
+				{/if}
 				
 				{#if editingTransaction}
 					<button type="button" onclick={openDeleteConfirm} class="btn-delete">
@@ -752,7 +910,7 @@
 					
 					<!-- Row 4 -->
 					<button type="button" onclick={() => calcInput('0')} class="calc-btn number span-2">0</button>
-					<button type="button" aria-label="Backspace" onclick={calcBackspace} class="calc-btn backspace">
+					<button type="button" aria-label="Backspace" onclick={() => calcBackspace()} class="calc-btn backspace">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414-6.414a2 2 0 011.414-.586H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z" />
 						</svg>
@@ -950,15 +1108,22 @@
 
 	/* Amount Display */
 	.amount-display {
-		display: block;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 		width: 100%;
 		padding: 20px 16px;
 		text-align: center;
+		gap: 4px;
 	}
 
 	.amount-value {
 		font-size: 36px;
 		font-weight: 600;
+	}
+
+	.amount-value.converted {
+		font-size: 28px;
 	}
 
 	.amount-value.inflow {
@@ -967,6 +1132,25 @@
 
 	.amount-value.outflow {
 		color: var(--color-danger);
+	}
+
+	.conversion-arrow {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 4px 0;
+	}
+
+	.conversion-arrow svg {
+		width: 20px;
+		height: 20px;
+		color: var(--color-text-muted);
+	}
+
+	.exchange-rate-info {
+		font-size: 12px;
+		color: var(--color-text-muted);
+		margin-top: 4px;
 	}
 
 	/* Form Card */

@@ -55,6 +55,7 @@ export const transactionSchema = z.object({
 	cleared: z.enum(['cleared', 'uncleared', 'reconciled']).optional(),
 	is_transfer: z.boolean().optional(),
 	transfer_account_id: z.number().int().positive().optional(),
+	converted_amount: z.number().optional(), // For multi-currency transfers
 	notes: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	ynab_import_id: z.string().optional()
