@@ -110,20 +110,6 @@
 		loadSpendingData();
 	});
 
-	const netWorth = 15341.44;
-	const assets = 15341.44;
-	const debts = 0;
-	
-	// Net worth history for chart (last 6 months)
-	const netWorthHistory = [
-		{ month: 'Jul', value: 12000 },
-		{ month: 'Aug', value: 14000 },
-		{ month: 'Sep', value: 13500 },
-		{ month: 'Oct', value: 12800 },
-		{ month: 'Nov', value: 13200 },
-		{ month: 'Dec', value: 15341 }
-	];
-
 	const ageOfMoney = 21;
 	
 	// Age of money history
@@ -206,55 +192,19 @@
 			</a>
 
 			<!-- Net Worth Card -->
-			<a href="/reports/net-worth" class="report-card">
-			<div class="card-header">
-				<div class="card-icon blue">
-					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
+			<a href="/reports/net-worth" class="report-card simple-card">
+				<div class="card-header">
+					<div class="card-icon blue">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
+						</svg>
+					</div>
+					<span class="card-title">Net Worth</span>
+					<svg class="card-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 					</svg>
 				</div>
-				<span class="card-title">Net Worth</span>
-				<svg class="card-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-
-			<div class="card-body">
-				<span class="card-amount">{formatCurrency(netWorth)}</span>
-			</div>
-
-			<div class="net-worth-details">
-				<div class="detail-row">
-					<span class="detail-label success">Assets</span>
-					<span class="detail-value">{formatCurrency(assets)}</span>
-				</div>
-				<div class="detail-row">
-					<span class="detail-label danger">Debts</span>
-					<span class="detail-value">{formatCurrency(debts)}</span>
-				</div>
-			</div>
-
-			<div class="chart-container">
-				<div class="chart-y-labels">
-					<span>24Klei</span>
-					<span>0Klei</span>
-				</div>
-				<div class="bar-chart">
-					{#each netWorthHistory as item, i}
-						<div class="bar-wrapper">
-							<div 
-								class="bar"
-								class:current={i === netWorthHistory.length - 1}
-								style="height: {(item.value / 24000) * 100}%"
-							>
-								<div class="bar-dot"></div>
-							</div>
-							<span class="bar-label" class:highlight={i === netWorthHistory.length - 1}>{item.month}</span>
-						</div>
-					{/each}
-				</div>
-			</div>
-		</a>
+			</a>
 
 		<!-- Age of Money Card -->
 		<a href="/reports/age-of-money" class="report-card">
@@ -366,6 +316,10 @@
 		align-items: center;
 		gap: 10px;
 		margin-bottom: 12px;
+	}
+
+	.simple-card .card-header {
+		margin-bottom: 0;
 	}
 
 	.card-icon {
@@ -506,36 +460,6 @@
 		color: var(--color-text-primary);
 	}
 
-	/* Net Worth Details */
-	.net-worth-details {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		margin-bottom: 16px;
-	}
-
-	.detail-row {
-		display: flex;
-		justify-content: space-between;
-	}
-
-	.detail-label {
-		font-size: 13px;
-	}
-
-	.detail-label.success {
-		color: var(--color-success);
-	}
-
-	.detail-label.danger {
-		color: var(--color-danger);
-	}
-
-	.detail-value {
-		font-size: 13px;
-		color: var(--color-text-secondary);
-	}
-
 	/* Chart Container */
 	.chart-container {
 		position: relative;
@@ -552,59 +476,6 @@
 		justify-content: space-between;
 		font-size: 11px;
 		color: var(--color-text-muted);
-	}
-
-	/* Bar Chart */
-	.bar-chart {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		height: 100px;
-		padding-right: 48px;
-		gap: 8px;
-	}
-
-	.bar-wrapper {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		height: 100%;
-	}
-
-	.bar {
-		width: 24px;
-		background-color: var(--color-chart-1);
-		border-radius: 4px 4px 0 0;
-		position: relative;
-		margin-top: auto;
-	}
-
-	.bar.current {
-		background: transparent;
-		border: 2px dashed var(--color-primary);
-	}
-
-	.bar-dot {
-		position: absolute;
-		top: -6px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 12px;
-		height: 12px;
-		background-color: var(--color-text-primary);
-		border-radius: 50%;
-		border: 2px solid var(--color-bg-secondary);
-	}
-
-	.bar-label {
-		font-size: 11px;
-		color: var(--color-text-muted);
-		margin-top: 8px;
-	}
-
-	.bar-label.highlight {
-		color: var(--color-primary);
 	}
 
 	/* Area Chart */

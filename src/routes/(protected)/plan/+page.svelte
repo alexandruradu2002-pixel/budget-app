@@ -160,6 +160,51 @@
 		return total;
 	});
 
+	// Calculate min and max spent values for gradient coloring
+	// Positive spent = expenses (yellow/gold), Negative spent = income (green), Zero = neutral (white)
+	let spentRange = $derived.by(() => {
+		const values = Array.from(spentByCategory.values());
+		if (values.length === 0) return { min: 0, max: 0 };
+		
+		const positives = values.filter(v => v > 0);
+		const negatives = values.filter(v => v < 0);
+		
+		return {
+			min: negatives.length > 0 ? Math.min(...negatives) : 0,
+			max: positives.length > 0 ? Math.max(...positives) : 0
+		};
+	});
+
+	// Get color for spent value based on gradient
+	// Positive values: white to gold/yellow (more positive = more gold)
+	// Negative values: white to green (more negative = more green)
+	// Zero: white
+	function getSpentColor(spent: number): string {
+		if (spent === 0) return 'var(--color-text-primary)';
+		
+		const { min, max } = spentRange;
+		
+		if (spent > 0 && max > 0) {
+			// Positive: interpolate from white to gold
+			const intensity = spent / max;
+			// Gold color: rgb(255, 193, 7) - amber/gold
+			const r = Math.round(255);
+			const g = Math.round(255 - (255 - 193) * intensity);
+			const b = Math.round(255 - (255 - 7) * intensity);
+			return `rgb(${r}, ${g}, ${b})`;
+		} else if (spent < 0 && min < 0) {
+			// Negative: interpolate from white to green
+			const intensity = spent / min; // Both negative, so this gives positive ratio
+			// Green color: rgb(34, 197, 94) - success green
+			const r = Math.round(255 - (255 - 34) * intensity);
+			const g = Math.round(255 - (255 - 197) * intensity);
+			const b = Math.round(255 - (255 - 94) * intensity);
+			return `rgb(${r}, ${g}, ${b})`;
+		}
+		
+		return 'var(--color-text-primary)';
+	}
+
 	// Load categories and build groups
 	async function loadCategories() {
 		loading = true;
@@ -475,6 +520,7 @@
 						{@const target = convertedTargets.get(category.category_id)}
 						{@const isOverBudget = target && spent > target}
 						{@const remaining = target ? Math.max(0, target - spent) : null}
+						{@const spentColor = getSpentColor(spent)}
 						<button 
 							class="category-row"
 							onclick={() => goto(`/plan/categories/${category.category_id}`)}
@@ -486,7 +532,11 @@
 										{formatCurrency(remaining ?? 0)}
 									</span>
 								{/if}
-								<span class="category-spent" class:over-budget={isOverBudget}>
+								<span 
+									class="category-spent" 
+									class:over-budget={isOverBudget}
+									style="color: {spentColor}"
+								>
 									{formatCurrency(spent)}
 								</span>
 							</div>
@@ -678,12 +728,12 @@
 		min-width: 65px;
 		text-align: center;
 		background-color: var(--color-bg-tertiary);
-		color: var(--color-text-primary);
+		/* Color is set inline via style attribute for gradient effect */
 	}
 
 	.category-spent.over-budget {
 		background-color: rgba(239, 68, 68, 0.15);
-		color: var(--color-danger);
+		color: var(--color-danger) !important;
 	}
 
 	/* Error and Empty States */

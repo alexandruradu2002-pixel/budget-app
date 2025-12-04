@@ -64,6 +64,9 @@
 	let selectedCategoryName = $state('');
 	let selectedAccountName = $state('');
 
+	// Track if user manually changed the category (to prevent auto-complete overwriting)
+	let userChangedCategory = $state(false);
+
 	// Location-based auto-complete state
 	let currentPosition = $state<GeolocationPosition | null>(null);
 	let locationStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -160,6 +163,9 @@
 			// Reset transfer state
 			isTransfer = false;
 			transferTargetAccountId = null;
+
+			// Reset user category change tracking
+			userChangedCategory = false;
 
 			if (editingTransaction) {
 				const amount = Math.abs(Math.round(editingTransaction.amount));
@@ -280,9 +286,9 @@
 		isTransfer = false;
 		transferTargetAccountId = null;
 
-		// Check if auto-categorize is enabled
+		// Check if auto-categorize is enabled, but only if user hasn't manually changed category
 		const autoCategorize = localStorage.getItem('payee_auto_categorize') === 'true';
-		if (autoCategorize && payee) {
+		if (autoCategorize && payee && !userChangedCategory) {
 			try {
 				const res = await fetch(`/api/payees?action=most-frequent-category&payee=${encodeURIComponent(payee)}`);
 				if (res.ok) {
@@ -314,6 +320,8 @@
 		if (isTransfer) return;
 		formData.category_id = category.id;
 		selectedCategoryName = category.name;
+		// Mark that user manually changed the category
+		userChangedCategory = true;
 	}
 
 	// Handle account selection
