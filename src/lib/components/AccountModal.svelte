@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { toast } from '$lib/stores';
+	import { toast, cacheStore } from '$lib/stores';
 	import type { Account } from '$lib/types';
 
 	// Props
@@ -245,6 +245,9 @@
 
 				toast.success('Contul a fost creat');
 			}
+			
+			// Invalidate accounts cache so fresh data is fetched
+			cacheStore.invalidateAccounts();
 			
 			await onSave();
 			closeModal();

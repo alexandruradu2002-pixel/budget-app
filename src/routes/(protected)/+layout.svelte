@@ -1,14 +1,16 @@
 <script lang="ts">
 	// Protected layout - LOGIN DISABLED: Single user mode
 	import { page } from '$app/stores';
-	import { currencyStore } from '$lib/stores';
+	import { currencyStore, cacheStore } from '$lib/stores';
 	
 	let { children } = $props();
 	let currentPath = $derived($page.url.pathname);
 
-	// Initialize currency store (loads rates from API with daily caching)
+	// Initialize stores (loads from localStorage cache first, then refreshes in background)
 	$effect(() => {
 		currencyStore.init();
+		// Preload accounts and categories for instant modal loading
+		cacheStore.preloadEssentials();
 	});
 
 	// Navigation items

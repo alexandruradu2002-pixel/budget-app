@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
+	import { cacheStore } from '$lib/stores';
 
 	// Currency symbols map
 	const currencySymbols: Record<string, string> = {
@@ -43,9 +44,9 @@
 		onClose = () => {}
 	} = $props();
 
-	// State
-	let accounts = $state<Account[]>([]);
-	let loading = $state(false);
+	// State - use cache store's reactive accounts
+	let accounts = $derived(cacheStore.activeAccounts);
+	let loading = $derived(cacheStore.accountsLoading);
 	let error = $state('');
 
 	// Group accounts by type
@@ -90,18 +91,13 @@
 	}
 
 	async function loadAccounts() {
-		loading = true;
 		error = '';
 		try {
-			const res = await fetch('/api/accounts');
-			if (!res.ok) throw new Error('Failed to load accounts');
-			const data = await res.json();
-			accounts = data.accounts || [];
+			// Uses cache - instant load from localStorage, then background refresh
+			await cacheStore.loadAccounts();
 		} catch (e) {
 			error = 'Could not load accounts';
 			console.error(e);
-		} finally {
-			loading = false;
 		}
 	}
 

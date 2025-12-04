@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Category } from '$lib/types';
 	import { LoadingState, PageHeader, HeaderButton, Alert } from '$lib/components';
-	import { toast } from '$lib/stores';
+	import { toast, cacheStore } from '$lib/stores';
 
 	// Constants
 	const UNCATEGORIZED = 'Uncategorized';
@@ -278,6 +278,10 @@
 		});
 
 		if (!res.ok) throw new Error(`Failed to ${editingCategory ? 'update' : 'create'} category`);
+		
+		// Invalidate categories cache
+		cacheStore.invalidateCategories();
+		
 		toast.success(`Category ${editingCategory ? 'updated' : 'created'}`);
 	}
 
@@ -293,6 +297,10 @@
 		try {
 			const res = await fetch(`/api/categories?id=${categoryToDelete.id}`, { method: 'DELETE' });
 			if (!res.ok) throw new Error('Failed to delete category');
+			
+			// Invalidate categories cache
+			cacheStore.invalidateCategories();
+			
 			toast.success('Category deleted');
 			showDeleteConfirm = false;
 			categoryToDelete = null;
@@ -323,6 +331,10 @@
 				const data = await res.json().catch(() => ({}));
 				throw new Error(data.message || 'Failed to delete group');
 			}
+			
+			// Invalidate categories cache
+			cacheStore.invalidateCategories();
+			
 			toast.success('Group deleted');
 			showDeleteGroupConfirm = false;
 			groupToDelete = null;

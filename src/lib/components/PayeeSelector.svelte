@@ -16,6 +16,7 @@
 
 <script lang="ts">
 	import type { Account } from '$lib/types';
+	import { cacheStore, type Payee } from '$lib/stores';
 
 	// Props
 	let {
@@ -30,10 +31,17 @@
 
 	// State
 	let searchQuery = $state('');
-	let payees = $state<{ name: string; usage_count: number }[]>([]);
-	let loading = $state(false);
+	let allPayees = $derived(cacheStore.payees);
+	let loading = $derived(cacheStore.payeesLoading);
 	let error = $state('');
 	let searchInputRef = $state<HTMLInputElement | null>(null);
+
+	// Filter payees client-side based on search query
+	let payees = $derived.by(() => {
+		if (!searchQuery.trim()) return allPayees;
+		const query = searchQuery.toLowerCase();
+		return allPayees.filter(p => p.name.toLowerCase().includes(query));
+	});
 
 	// Collapsible sections state
 	let transfersExpanded = $state(false);
@@ -107,38 +115,20 @@
 		}
 	}
 
-	// Search with debounce - only trigger when searchQuery changes (not on show)
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	let previousSearch = $state('');
-	
-	$effect(() => {
-		// Only trigger search if modal is open and search changed
-		if (show && searchQuery !== previousSearch) {
-			clearTimeout(searchTimeout);
-			searchTimeout = setTimeout(() => {
-				previousSearch = searchQuery;
-				loadPayees(searchQuery);
-			}, 300);
-		}
-	});
-
-	async function loadPayees(search = '') {
-		loading = true;
+	async function loadPayees() {
 		error = '';
 		try {
-			const url = search 
-				? `/api/payees?search=${encodeURIComponent(search)}`
-				: '/api/payees';
-			const res = await fetch(url);
-			if (!res.ok) throw new Error('Failed to load payees');
-			const data = await res.json();
-			payees = data.payees || [];
+			// Uses cache - instant load from localStorage, then background refresh
+			await cacheStore.loadPayees();
 		} catch (e) {
 			error = 'Could not load payees';
 			console.error(e);
-		} finally {
-			loading = false;
 		}
+	}
+
+	// Force refresh after edits/deletes
+	async function refreshPayees() {
+		await cacheStore.loadPayees(true);
 	}
 
 	function selectPayee(name: string) {
@@ -166,6 +156,9 @@
 				});
 				if (!res.ok) {
 					console.error('Failed to save new payee');
+				} else {
+					// Invalidate cache so new payee appears next time
+					cacheStore.invalidatePayees();
 				}
 			} catch (e) {
 				console.error('Error saving payee:', e);
@@ -194,8 +187,8 @@
 				method: 'DELETE'
 			});
 			if (res.ok) {
-				// Reload payees list
-				await loadPayees(searchQuery);
+				// Refresh payees list from server
+				await refreshPayees();
 			} else {
 				console.error('Failed to delete payee');
 			}
@@ -265,8 +258,8 @@
 				if (selectedPayee === payeeToEdit) {
 					selectedPayee = editNewName.trim();
 				}
-				// Reload payees list
-				await loadPayees(searchQuery);
+				// Refresh payees list from server
+				await refreshPayees();
 			} else {
 				console.error('Failed to rename payee');
 			}
@@ -346,7 +339,7 @@
 			{:else if error}
 				<div class="error-state">
 					<p>{error}</p>
-					<button onclick={() => loadPayees(searchQuery)} class="retry-btn">Try Again</button>
+					<button onclick={() => loadPayees()} class="retry-btn">Try Again</button>
 				</div>
 			{:else}
 				<!-- Add New Payee option if searching -->

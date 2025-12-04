@@ -2,7 +2,7 @@
 	import type { Category, Transaction, Account } from '$lib/types';
 	import type { CurrencyValue } from '$lib/constants';
 	import { formatCurrency } from '$lib/utils/format';
-	import { currencyStore } from '$lib/stores';
+	import { currencyStore, cacheStore } from '$lib/stores';
 
 	// Extended category type with spent amount
 	interface CategoryWithSpent extends Category {
@@ -17,12 +17,18 @@
 		onClose = () => {}
 	} = $props();
 
-	// State
+	// State - categories from cache, transactions still fetched fresh
 	let searchQuery = $state('');
-	let categories = $state<CategoryWithSpent[]>([]);
+	let categories = $derived(cacheStore.categories as CategoryWithSpent[]);
 	let transactions = $state<Transaction[]>([]);
-	let accountCurrencies = $state<Map<number, CurrencyValue>>(new Map());
-	let loading = $state(false);
+	let accountCurrencies = $derived.by(() => {
+		const currencyMap = new Map<number, CurrencyValue>();
+		for (const acc of cacheStore.accounts) {
+			currencyMap.set(acc.id, (acc.currency as CurrencyValue) || 'RON');
+		}
+		return currencyMap;
+	});
+	let loading = $derived(cacheStore.categoriesLoading);
 	let error = $state('');
 
 	// Calculate spent amount per category from transactions
@@ -104,10 +110,9 @@
 	}
 
 	async function loadCategories() {
-		loading = true;
 		error = '';
 		try {
-			// Get current month's start and end dates
+			// Get current month's start and end dates for transactions
 			const now = new Date();
 			const year = now.getFullYear();
 			const month = now.getMonth();
@@ -115,37 +120,20 @@
 			const lastDay = new Date(year, month + 1, 0).getDate();
 			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-			// Fetch categories, transactions, and accounts in parallel
-			const [catRes, transRes, accountsRes] = await Promise.all([
-				fetch('/api/categories'),
-				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
-				fetch('/api/accounts')
+			// Load categories and accounts from cache (instant), transactions fresh
+			const [, , transRes] = await Promise.all([
+				cacheStore.loadCategories(),
+				cacheStore.loadAccounts(),
+				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`)
 			]);
-
-			if (!catRes.ok) throw new Error('Failed to load categories');
-			
-			const catData = await catRes.json();
-			categories = catData.categories || [];
 			
 			if (transRes.ok) {
 				const transData = await transRes.json();
 				transactions = transData.transactions || [];
 			}
-			
-			// Build account currency map
-			if (accountsRes.ok) {
-				const accountsData = await accountsRes.json();
-				const currencyMap = new Map<number, CurrencyValue>();
-				for (const acc of accountsData.accounts || []) {
-					currencyMap.set(acc.id, (acc.currency as CurrencyValue) || 'RON');
-				}
-				accountCurrencies = currencyMap;
-			}
 		} catch (e) {
 			error = 'Could not load categories';
 			console.error(e);
-		} finally {
-			loading = false;
 		}
 	}
 
