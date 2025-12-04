@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Transaction, Account, Category } from '$lib/types';
-	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector } from '$lib/components';
+	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector, PayeeSelector } from '$lib/components';
 	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 
 	// Transaction payload type for save operations
@@ -34,6 +34,7 @@
 	let bulkMoveMode = $state(false);
 	let selectedTransactionIds = $state<Set<number>>(new Set());
 	let showCategorySelector = $state(false);
+	let showPayeeSelector = $state(false);
 	let bulkMoving = $state(false);
 	
 	// Pagination state
@@ -155,6 +156,56 @@
 			await reloadWithCurrentSearch();
 		} catch (error) {
 			console.error('Failed to bulk move transactions:', error);
+		} finally {
+			bulkMoving = false;
+		}
+	}
+
+	// Open payee selector for bulk change
+	function openBulkPayeeSelector() {
+		if (selectedCount === 0) return;
+		showPayeeSelector = true;
+	}
+
+	// Handle bulk payee change
+	async function handleBulkPayeeChange(payee: string) {
+		showPayeeSelector = false;
+		if (!payee || selectedCount === 0) return;
+		
+		bulkMoving = true;
+		try {
+			// Update each selected transaction
+			const promises = Array.from(selectedTransactionIds).map(txId => {
+				const tx = transactions.find(t => t.id === txId);
+				if (!tx) return Promise.resolve();
+				
+				// Send all required fields for the transaction update
+				return fetch('/api/transactions', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						id: txId,
+						account_id: tx.account_id,
+						amount: tx.amount,
+						description: payee, // Also update description to match payee
+						date: tx.date,
+						category_id: tx.category_id,
+						payee: payee,
+						memo: tx.memo || tx.notes || '',
+						cleared: tx.cleared || 'uncleared',
+						notes: tx.notes || ''
+					})
+				});
+			});
+			
+			await Promise.all(promises);
+			
+			// Reset and reload
+			selectedTransactionIds = new Set();
+			bulkMoveMode = false;
+			await reloadWithCurrentSearch();
+		} catch (error) {
+			console.error('Failed to bulk change payees:', error);
 		} finally {
 			bulkMoving = false;
 		}
@@ -488,6 +539,19 @@
 				Move {selectedCount} to Category
 			{/if}
 		</button>
+		<button class="bulk-move-btn secondary" onclick={openBulkPayeeSelector} disabled={bulkMoving}>
+			{#if bulkMoving}
+				<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+					<circle cx="12" cy="12" r="10" stroke-width="2" stroke-opacity="0.3" />
+					<path stroke-linecap="round" stroke-width="2" d="M12 2a10 10 0 0 1 10 10" />
+				</svg>
+			{:else}
+				<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+				</svg>
+				Change Payee
+			{/if}
+		</button>
 	</div>
 {/if}
 
@@ -497,6 +561,16 @@
 		bind:show={showCategorySelector}
 		selectedCategoryId={0}
 		onSelect={handleBulkCategoryChange}
+	/>
+{/if}
+
+<!-- Payee Selector for Bulk Change -->
+{#if showPayeeSelector}
+	<PayeeSelector
+		bind:show={showPayeeSelector}
+		selectedPayee=""
+		{accounts}
+		onSelect={handleBulkPayeeChange}
 	/>
 {/if}
 
@@ -929,6 +1003,7 @@
 		border-top: 1px solid var(--color-border);
 		display: flex;
 		justify-content: center;
+		gap: 12px;
 		z-index: 50;
 	}
 
@@ -937,16 +1012,27 @@
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 14px 24px;
+		padding: 14px 20px;
 		background: var(--color-primary);
 		color: white;
 		border: none;
 		border-radius: 12px;
-		font-size: 15px;
+		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		min-width: 200px;
+		min-width: 160px;
+	}
+
+	.bulk-move-btn.secondary {
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
+	}
+
+	.bulk-move-btn.secondary:hover:not(:disabled) {
+		background: var(--color-bg-secondary);
+		border-color: var(--color-primary);
 	}
 
 	.bulk-move-btn:hover:not(:disabled) {

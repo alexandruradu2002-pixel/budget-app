@@ -33,6 +33,7 @@
 	let payees = $state<{ name: string; usage_count: number }[]>([]);
 	let loading = $state(false);
 	let error = $state('');
+	let searchInputRef = $state<HTMLInputElement | null>(null);
 
 	// Collapsible sections state
 	let transfersExpanded = $state(false);
@@ -73,6 +74,10 @@
 			if (typeof window !== 'undefined' && window.location.hash !== '#payee-selector') {
 				history.pushState({ payeeSelector: true }, '', '#payee-selector');
 			}
+			// Focus search input to open keyboard on mobile
+			setTimeout(() => {
+				searchInputRef?.focus();
+			}, 100);
 		}
 	});
 
@@ -298,9 +303,11 @@
 				</svg>
 				<input
 					type="text"
+					bind:this={searchInputRef}
 					bind:value={searchQuery}
 					placeholder="Search or enter new payee..."
 					class="search-input"
+					enterkeyhint="done"
 				/>
 				{#if searchQuery}
 					<button aria-label="Clear search" onclick={() => searchQuery = ''} class="clear-btn">
