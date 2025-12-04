@@ -25,40 +25,63 @@
 	type TableFilter = 'thisYear' | 'allDates';
 	let tableFilter: TableFilter = $state('thisYear');
 
+	// Bar width constant (same as in CSS)
+	const BAR_WIDTH = 50;
+
 	// Derived: date range display based on scroll position
 	let dateRangeDisplay = $derived(() => {
 		if (!netWorthData?.history || netWorthData.history.length === 0) return '';
 		const history = netWorthData.history;
-		
-		// Calculate which months are visible based on scroll
 		const totalMonths = history.length;
+		
 		if (totalMonths <= MONTHS_PER_VIEW) {
 			return `${history[0].label} - ${history[totalMonths - 1].label}`;
 		}
 		
-		// Calculate visible range based on scroll offset
-		const barWidth = scrollContainer ? scrollContainer.scrollWidth / totalMonths : 50;
-		const firstVisibleIndex = Math.floor(scrollOffset / barWidth);
-		const lastVisibleIndex = Math.min(firstVisibleIndex + MONTHS_PER_VIEW - 1, totalMonths - 1);
+		// Calculate visible range based on scroll offset and container width
+		const containerWidth = scrollContainer?.clientWidth || (MONTHS_PER_VIEW * BAR_WIDTH);
+		const visibleMonths = Math.floor(containerWidth / BAR_WIDTH);
+		
+		const firstVisibleIndex = Math.floor(scrollOffset / BAR_WIDTH);
+		const lastVisibleIndex = Math.min(firstVisibleIndex + visibleMonths - 1, totalMonths - 1);
 		
 		const first = history[Math.max(0, firstVisibleIndex)];
 		const last = history[Math.min(lastVisibleIndex, totalMonths - 1)];
 		return `${first?.label || ''} - ${last?.label || ''}`;
 	});
 
-	// Derived: chart scaling (based on ALL data for consistent scale)
+	// Derived: chart scaling (start from 0 for clarity)
 	let chartScale = $derived(() => {
 		if (!netWorthData?.history || netWorthData.history.length === 0) {
-			return { min: 0, max: 100000, range: 100000 };
+			return { min: 0, max: 20000, range: 20000 };
 		}
 		const values = netWorthData.history.map((m) => m.value);
-		const maxVal = Math.max(...values, 0);
-		const minVal = Math.min(...values, 0);
-		// Add some padding
-		const padding = (maxVal - minVal) * 0.1 || 1000;
-		const min = Math.floor((minVal - padding) / 1000) * 1000;
-		const max = Math.ceil((maxVal + padding) / 1000) * 1000;
-		return { min: Math.min(min, 0), max, range: max - min };
+		const maxVal = Math.max(...values);
+		const minVal = Math.min(...values);
+		
+		// Always start from 0 for positive values
+		let min = 0;
+		
+		// If there are negative values, include them
+		if (minVal < 0) {
+			// Round down to nearest thousand
+			min = Math.floor(minVal / 1000) * 1000;
+		}
+		
+		// Round max up to nearest nice number
+		// Add 10% padding and round up
+		const maxWithPadding = maxVal * 1.1;
+		
+		// Round to nice intervals: 5K, 10K, 15K, 20K, 25K, etc.
+		const step = 5000;
+		let max = Math.ceil(maxWithPadding / step) * step;
+		
+		// Ensure max is at least a bit more than maxVal
+		if (max <= maxVal) {
+			max += step;
+		}
+		
+		return { min, max, range: max - min };
 	});
 
 	// Derived: filtered table data
@@ -106,16 +129,14 @@
 
 	function goLeft() {
 		if (scrollContainer) {
-			const barWidth = scrollContainer.scrollWidth / (netWorthData?.history?.length || 1);
-			const scrollAmount = barWidth * MONTHS_PER_VIEW;
+			const scrollAmount = BAR_WIDTH * MONTHS_PER_VIEW;
 			scrollContainer.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
 		}
 	}
 
 	function goRight() {
 		if (scrollContainer) {
-			const barWidth = scrollContainer.scrollWidth / (netWorthData?.history?.length || 1);
-			const scrollAmount = barWidth * MONTHS_PER_VIEW;
+			const scrollAmount = BAR_WIDTH * MONTHS_PER_VIEW;
 			scrollContainer.scrollBy({ left: scrollAmount, behavior: 'smooth' });
 		}
 	}
@@ -141,13 +162,16 @@
 		return value.toString();
 	}
 
-	// Generate Y-axis labels (5 labels)
+	// Generate Y-axis labels (5 labels from max to min)
 	let yAxisLabels = $derived(() => {
 		const scale = chartScale();
 		const labels: number[] = [];
-		const step = scale.range / 4;
-		for (let i = 0; i <= 4; i++) {
-			labels.push(Math.round(scale.max - step * i));
+		const numLabels = 5;
+		const step = scale.range / (numLabels - 1);
+		
+		for (let i = 0; i < numLabels; i++) {
+			const value = scale.max - (step * i);
+			labels.push(Math.round(value));
 		}
 		return labels;
 	});
@@ -533,6 +557,7 @@
 		flex-direction: column;
 		justify-content: space-between;
 		padding-right: 8px;
+		padding-bottom: 28px; /* Space for bar labels */
 		min-width: 55px;
 		flex-shrink: 0;
 	}
@@ -558,14 +583,19 @@
 	}
 
 	.chart-content-scroll {
-		height: 200px;
+		height: 100%;
 		position: relative;
 		min-width: 100%;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.grid-lines-scroll {
 		position: absolute;
-		inset: 0;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 28px; /* Same as bar label space */
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
@@ -580,7 +610,7 @@
 
 	.bars-scroll {
 		display: flex;
-		height: 100%;
+		flex: 1;
 		position: relative;
 	}
 
@@ -602,6 +632,7 @@
 		justify-content: flex-end;
 		align-items: center;
 		position: relative;
+		margin-bottom: 28px; /* Space for labels, aligned with y-axis */
 	}
 
 	.bar {
@@ -639,9 +670,10 @@
 	}
 
 	.bar-label {
+		position: absolute;
+		bottom: 8px;
 		font-size: 10px;
 		color: var(--color-text-muted);
-		margin-top: 8px;
 		white-space: nowrap;
 	}
 

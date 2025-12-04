@@ -284,6 +284,13 @@ export async function initializeDatabase() {
 		// Column already exists, ignore
 	}
 
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN transfer_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL');
+		console.log('✅ Added transfer_account_id column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
 	// Create indexes for migrated columns (after migrations)
 	try {
 		await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_group ON categories(group_name)');
@@ -299,6 +306,12 @@ export async function initializeDatabase() {
 
 	try {
 		await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_ynab_import ON transactions(ynab_import_id)');
+	} catch {
+		// Index already exists or column missing, ignore
+	}
+
+	try {
+		await db.execute('CREATE INDEX IF NOT EXISTS idx_transactions_transfer ON transactions(transfer_account_id)');
 	} catch {
 		// Index already exists or column missing, ignore
 	}
