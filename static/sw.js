@@ -1,14 +1,17 @@
 // Service Worker for Budget App PWA
-// Version 3 - With improved offline support
-const CACHE_NAME = 'budget-app-v3';
+// Version 4 - With aggressive offline support
+const CACHE_NAME = 'budget-app-v4';
 const API_CACHE_NAME = 'budget-app-api-v2';
 const OFFLINE_PAGE = '/offline.html';
 
-// Static resources to cache immediately
+// Static resources to cache immediately on install
 const STATIC_RESOURCES = [
 	'/',
+	'/offline.html',
 	'/manifest.json',
-	'/offline.html'
+	'/favicon.png',
+	'/icon-192.png',
+	'/icon-512.png'
 ];
 
 // Protected pages that should use app shell pattern
@@ -18,7 +21,8 @@ const PROTECTED_PAGES = [
 	'/accounts',
 	'/plan',
 	'/reports',
-	'/settings'
+	'/settings',
+	'/login'
 ];
 
 // API endpoints that can be cached for offline use
@@ -46,24 +50,33 @@ const API_CACHE_DURATION = {
 self.addEventListener('install', (event) => {
 	event.waitUntil(
 		caches.open(CACHE_NAME).then((cache) => {
+			console.log('[SW] Caching static resources');
 			return cache.addAll(STATIC_RESOURCES);
 		})
 	);
+	// Force the waiting service worker to become the active service worker
 	self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control immediately
 self.addEventListener('activate', (event) => {
 	event.waitUntil(
-		caches.keys().then((cacheNames) => {
-			return Promise.all(
-				cacheNames
-					.filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
-					.map((name) => caches.delete(name))
-			);
-		})
+		Promise.all([
+			// Clean old caches
+			caches.keys().then((cacheNames) => {
+				return Promise.all(
+					cacheNames
+						.filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
+						.map((name) => {
+							console.log('[SW] Deleting old cache:', name);
+							return caches.delete(name);
+						})
+				);
+			}),
+			// Take control of all clients immediately
+			self.clients.claim()
+		])
 	);
-	self.clients.claim();
 });
 
 // Check if URL is a protected page
@@ -185,12 +198,13 @@ async function handleApiRequest(request) {
 
 // Fetch event handler
 self.addEventListener('fetch', (event) => {
-	// Skip non-GET requests - mutations should not be cached
-	if (event.request.method !== 'GET') return;
+	const url = new URL(event.request.url);
 	
 	// Only handle http/https requests (skip chrome-extension, etc.)
-	const url = new URL(event.request.url);
 	if (!url.protocol.startsWith('http')) return;
+	
+	// Skip non-GET requests - mutations should not be cached
+	if (event.request.method !== 'GET') return;
 
 	// Handle cacheable API requests with stale-while-revalidate strategy
 	if (isCacheableApi(event.request.url)) {
@@ -199,15 +213,41 @@ self.addEventListener('fetch', (event) => {
 	}
 
 	// Skip other API requests (auth, mutations, etc.) - always go to network
-	if (event.request.url.includes('/api/')) return;
+	if (url.pathname.startsWith('/api/')) return;
 
-	// Handle navigation requests for protected pages
-	if (event.request.mode === 'navigate' && isProtectedPage(event.request.url)) {
+	// Handle ALL navigation requests (not just protected pages)
+	if (event.request.mode === 'navigate') {
 		event.respondWith(handleNavigationRequest(event.request));
 		return;
 	}
 
-	// Handle static resources with network-first, cache fallback
+	// Handle static resources with cache-first for assets, network-first for others
+	if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/)) {
+		// Cache-first for static assets
+		event.respondWith(
+			caches.match(event.request).then((cachedResponse) => {
+				if (cachedResponse) {
+					return cachedResponse;
+				}
+				return fetch(event.request).then((response) => {
+					if (!response || response.status !== 200) {
+						return response;
+					}
+					const responseClone = response.clone();
+					caches.open(CACHE_NAME).then((cache) => {
+						cache.put(event.request, responseClone);
+					});
+					return response;
+				}).catch(() => {
+					// Return nothing for failed asset requests
+					return new Response('', { status: 404 });
+				});
+			})
+		);
+		return;
+	}
+
+	// Network-first for other resources
 	event.respondWith(
 		fetch(event.request)
 			.then((response) => {
@@ -236,40 +276,111 @@ self.addEventListener('fetch', (event) => {
 	);
 });
 
-// Handle navigation requests for protected pages
+// Handle navigation requests for all pages
 async function handleNavigationRequest(request) {
+	const url = new URL(request.url);
+	
 	// Try network first
 	try {
 		const response = await fetch(request);
 		
-		// If we get a redirect to login, we might be offline or session expired
-		// Cache successful page responses
+		// Cache successful page responses (including redirects that resolve)
 		if (response.ok) {
 			const cache = await caches.open(CACHE_NAME);
+			// Clone before caching
 			cache.put(request, response.clone());
 		}
 		
 		return response;
 	} catch (error) {
-		// Network failed - we're offline
-		// Try to return cached version of the page
-		const cache = await caches.open(CACHE_NAME);
-		const cachedResponse = await cache.match(request);
+		console.log('[SW] Network failed for:', url.pathname);
 		
+		// Network failed - we're offline
+		const cache = await caches.open(CACHE_NAME);
+		
+		// Try to return cached version of the page
+		const cachedResponse = await cache.match(request);
 		if (cachedResponse) {
+			console.log('[SW] Returning cached page:', url.pathname);
 			return cachedResponse;
 		}
 		
+		// Try to match just the pathname (without query params)
+		const pathOnlyRequest = new Request(url.origin + url.pathname);
+		const cachedPathResponse = await cache.match(pathOnlyRequest);
+		if (cachedPathResponse) {
+			console.log('[SW] Returning cached path:', url.pathname);
+			return cachedPathResponse;
+		}
+		
+		// For protected pages without cache, show offline page
+		if (isProtectedPage(request.url)) {
+			console.log('[SW] Showing offline page for protected route:', url.pathname);
+			const offlinePage = await cache.match(OFFLINE_PAGE);
+			if (offlinePage) {
+				return offlinePage;
+			}
+		}
+		
+		// Try root page as fallback for SPA navigation
+		const rootResponse = await cache.match('/');
+		if (rootResponse) {
+			console.log('[SW] Returning root page as fallback');
+			return rootResponse;
+		}
+		
 		// No cached version - return offline page
-		const offlinePage = await caches.match(OFFLINE_PAGE);
+		const offlinePage = await cache.match(OFFLINE_PAGE);
 		if (offlinePage) {
 			return offlinePage;
 		}
 		
 		// Last resort - return a basic offline response
 		return new Response(
-			'<html><body><h1>Offline</h1><p>Nu există conexiune la internet.</p></body></html>',
-			{ headers: { 'Content-Type': 'text/html' } }
+			`<!DOCTYPE html>
+			<html>
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<title>Offline</title>
+				<style>
+					body { 
+						font-family: system-ui, sans-serif; 
+						display: flex; 
+						justify-content: center; 
+						align-items: center; 
+						min-height: 100vh; 
+						margin: 0;
+						background: #0F172A;
+						color: #F8FAFC;
+						text-align: center;
+						padding: 20px;
+					}
+					h1 { margin-bottom: 10px; }
+					button {
+						background: #3B82F6;
+						color: white;
+						border: none;
+						padding: 12px 24px;
+						border-radius: 8px;
+						font-size: 16px;
+						cursor: pointer;
+						margin-top: 20px;
+					}
+				</style>
+			</head>
+			<body>
+				<div>
+					<h1>Ești offline</h1>
+					<p>Nu există conexiune la internet.</p>
+					<button onclick="location.reload()">Încearcă din nou</button>
+				</div>
+			</body>
+			</html>`,
+			{ 
+				status: 200,
+				headers: { 'Content-Type': 'text/html; charset=utf-8' } 
+			}
 		);
 	}
 }

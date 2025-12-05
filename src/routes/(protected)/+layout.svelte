@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Protected layout - LOGIN DISABLED: Single user mode
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import { currencyStore, cacheStore, offlineStore } from '$lib/stores';
 	import { OfflineIndicator } from '$lib/components';
 	
@@ -14,6 +15,40 @@
 		// Preload accounts and categories for instant modal loading
 		cacheStore.preloadEssentials();
 	});
+	
+	// Pre-cache important pages for offline use when online
+	$effect(() => {
+		if (browser && navigator.onLine) {
+			precachePages();
+		}
+	});
+	
+	async function precachePages() {
+		const pagesToCache = [
+			'/dashboard',
+			'/spending',
+			'/accounts',
+			'/plan',
+			'/reports',
+			'/settings'
+		];
+		
+		// Cache pages in background without blocking
+		for (const path of pagesToCache) {
+			try {
+				const response = await fetch(path, { 
+					method: 'GET',
+					credentials: 'same-origin'
+				});
+				if (response.ok) {
+					// Service worker will cache this automatically
+					console.log('[App] Pre-cached:', path);
+				}
+			} catch {
+				// Ignore errors - page might not exist or network issue
+			}
+		}
+	}
 
 	// Navigation items
 	const navItems = [
