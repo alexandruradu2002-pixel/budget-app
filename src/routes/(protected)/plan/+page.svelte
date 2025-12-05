@@ -9,16 +9,77 @@
 	// Constants
 	const UNCATEGORIZED = 'Uncategorized';
 	const HIDDEN_GROUP = 'Hidden';
+	const PLAN_RANGE_STORAGE_KEY = 'plan-custom-range';
 
 	// Initialize currency store from localStorage
 	$effect(() => {
 		currencyStore.init();
 	});
 
-	// Current month state
+	// Custom range type
+	type PlanRangeMode = 'single' | 'custom';
+	interface PlanRange {
+		mode: PlanRangeMode;
+		startMonth: number; // 0-11
+		startYear: number;
+		endMonth: number; // 0-11
+		endYear: number;
+	}
+
+	// Load saved range from localStorage
+	function loadSavedRange(): PlanRange | null {
+		try {
+			const saved = localStorage.getItem(PLAN_RANGE_STORAGE_KEY);
+			if (saved) {
+				return JSON.parse(saved);
+			}
+		} catch (e) {
+			console.error('Failed to load saved plan range:', e);
+		}
+		return null;
+	}
+
+	// Save range to localStorage
+	function saveRange(range: PlanRange) {
+		try {
+			localStorage.setItem(PLAN_RANGE_STORAGE_KEY, JSON.stringify(range));
+		} catch (e) {
+			console.error('Failed to save plan range:', e);
+		}
+	}
+
+	// Current month state (for single month mode or default)
 	let currentDate = $state(new Date());
 	let showMonthPicker = $state(false);
 	let pickerYear = $state(new Date().getFullYear());
+
+	// Custom range state
+	let rangeMode = $state<PlanRangeMode>('single');
+	let customStartMonth = $state(new Date().getMonth());
+	let customStartYear = $state(new Date().getFullYear());
+	let customEndMonth = $state(new Date().getMonth());
+	let customEndYear = $state(new Date().getFullYear());
+	let rangePickerTab = $state<'start' | 'end'>('start');
+	let rangeStartPickerYear = $state(new Date().getFullYear());
+	let rangeEndPickerYear = $state(new Date().getFullYear());
+	let rangeInitialized = $state(false);
+
+	// Initialize from localStorage on mount
+	$effect(() => {
+		const saved = loadSavedRange();
+		if (saved) {
+			rangeMode = saved.mode;
+			if (saved.mode === 'custom') {
+				customStartMonth = saved.startMonth;
+				customStartYear = saved.startYear;
+				customEndMonth = saved.endMonth;
+				customEndYear = saved.endYear;
+				rangeStartPickerYear = saved.startYear;
+				rangeEndPickerYear = saved.endYear;
+			}
+		}
+		rangeInitialized = true;
+	});
 
 	// Months with transactions (year-month format: "2025-01")
 	let monthsWithTransactions = $state<Set<string>>(new Set());
@@ -176,8 +237,8 @@
 	});
 
 	// Get color for spent value based on gradient
-	// Positive values: white to gold/yellow (more positive = more gold)
-	// Negative values: white to green (more negative = more green)
+	// Positive values: white to red (more positive = more red = more expenses)
+	// Negative values: white to bright green (more negative = more green = more income)
 	// Zero: white
 	function getSpentColor(spent: number): string {
 		if (spent === 0) return 'var(--color-text-primary)';
@@ -185,20 +246,20 @@
 		const { min, max } = spentRange;
 		
 		if (spent > 0 && max > 0) {
-			// Positive: interpolate from white to gold
+			// Positive: interpolate from white to red (expenses)
 			const intensity = spent / max;
-			// Gold color: rgb(255, 193, 7) - amber/gold
+			// Red color: rgb(239, 68, 68) - danger red
 			const r = Math.round(255);
-			const g = Math.round(255 - (255 - 193) * intensity);
-			const b = Math.round(255 - (255 - 7) * intensity);
+			const g = Math.round(255 - (255 - 68) * intensity);
+			const b = Math.round(255 - (255 - 68) * intensity);
 			return `rgb(${r}, ${g}, ${b})`;
 		} else if (spent < 0 && min < 0) {
-			// Negative: interpolate from white to green
+			// Negative: interpolate from white to bright neon green (income)
 			const intensity = spent / min; // Both negative, so this gives positive ratio
-			// Green color: rgb(34, 197, 94) - success green
-			const r = Math.round(255 - (255 - 34) * intensity);
-			const g = Math.round(255 - (255 - 197) * intensity);
-			const b = Math.round(255 - (255 - 94) * intensity);
+			// Bright neon green: rgb(0, 255, 100) - very bright green
+			const r = Math.round(255 - 255 * intensity);
+			const g = Math.round(255);
+			const b = Math.round(255 - (255 - 100) * intensity);
 			return `rgb(${r}, ${g}, ${b})`;
 		}
 		
@@ -210,12 +271,23 @@
 		loading = true;
 		error = null;
 		try {
-			// Get current month's start and end dates
-			const year = currentDate.getFullYear();
-			const month = currentDate.getMonth();
-			const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-			const lastDay = new Date(year, month + 1, 0).getDate();
-			const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+			// Get date range based on mode
+			let startDate: string;
+			let endDate: string;
+			
+			if (rangeMode === 'custom') {
+				// Custom range mode
+				startDate = `${customStartYear}-${String(customStartMonth + 1).padStart(2, '0')}-01`;
+				const lastDay = new Date(customEndYear, customEndMonth + 1, 0).getDate();
+				endDate = `${customEndYear}-${String(customEndMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+			} else {
+				// Single month mode
+				const year = currentDate.getFullYear();
+				const month = currentDate.getMonth();
+				startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+				const lastDay = new Date(year, month + 1, 0).getDate();
+				endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+			}
 
 			// Fetch categories, transactions, accounts, and groups in parallel
 			const [catRes, transRes, accountsRes, groupsRes] = await Promise.all([
@@ -407,7 +479,18 @@
 		}
 	}
 
-	let displayMonth = $derived(formatMonthYearShort(currentDate));
+	// Display title - shows range or single month
+	let displayMonth = $derived.by(() => {
+		if (rangeMode === 'custom') {
+			const startStr = formatMonthYearShort(new Date(customStartYear, customStartMonth, 1));
+			const endStr = formatMonthYearShort(new Date(customEndYear, customEndMonth, 1));
+			if (customStartYear === customEndYear && customStartMonth === customEndMonth) {
+				return startStr;
+			}
+			return `${startStr} - ${endStr}`;
+		}
+		return formatMonthYearShort(currentDate);
+	});
 
 	function toggleGroup(groupId: number) {
 		categoryGroups = categoryGroups.map(group => 
@@ -421,20 +504,104 @@
 	function toggleMonthPicker() {
 		if (!showMonthPicker) {
 			// Reset picker year to current selected year when opening
-			pickerYear = currentDate.getFullYear();
+			if (rangeMode === 'single') {
+				pickerYear = currentDate.getFullYear();
+			}
 			loadMonthsWithTransactions();
 		}
 		showMonthPicker = !showMonthPicker;
 	}
 
 	function selectMonth(month: number) {
+		rangeMode = 'single';
 		currentDate = new Date(pickerYear, month, 1);
+		// Save single month mode
+		saveRange({
+			mode: 'single',
+			startMonth: month,
+			startYear: pickerYear,
+			endMonth: month,
+			endYear: pickerYear
+		});
 		showMonthPicker = false;
 	}
 
 	function isSelectedMonth(month: number): boolean {
+		if (rangeMode === 'custom') {
+			return false; // Don't highlight in single-month mode when in custom range
+		}
 		return currentDate.getFullYear() === pickerYear && 
 			   currentDate.getMonth() === month;
+	}
+
+	// Custom range selection
+	function selectRangeStart(month: number) {
+		customStartMonth = month;
+		customStartYear = rangeStartPickerYear;
+		// Auto-switch to end tab after selecting start
+		rangePickerTab = 'end';
+	}
+
+	function selectRangeEnd(month: number) {
+		customEndMonth = month;
+		customEndYear = rangeEndPickerYear;
+	}
+
+	function applyCustomRange() {
+		// Validate that end is >= start
+		const startDate = new Date(customStartYear, customStartMonth, 1);
+		const endDate = new Date(customEndYear, customEndMonth, 1);
+		
+		if (endDate < startDate) {
+			// Swap if end is before start
+			const tempMonth = customStartMonth;
+			const tempYear = customStartYear;
+			customStartMonth = customEndMonth;
+			customStartYear = customEndYear;
+			customEndMonth = tempMonth;
+			customEndYear = tempYear;
+		}
+		
+		rangeMode = 'custom';
+		
+		// Save to localStorage
+		saveRange({
+			mode: 'custom',
+			startMonth: customStartMonth,
+			startYear: customStartYear,
+			endMonth: customEndMonth,
+			endYear: customEndYear
+		});
+		
+		showMonthPicker = false;
+		// Trigger reload
+		loadCategories();
+	}
+
+	function clearCustomRange() {
+		rangeMode = 'single';
+		currentDate = new Date();
+		customStartMonth = currentDate.getMonth();
+		customStartYear = currentDate.getFullYear();
+		customEndMonth = currentDate.getMonth();
+		customEndYear = currentDate.getFullYear();
+		
+		// Save single month mode
+		saveRange({
+			mode: 'single',
+			startMonth: currentDate.getMonth(),
+			startYear: currentDate.getFullYear(),
+			endMonth: currentDate.getMonth(),
+			endYear: currentDate.getFullYear()
+		});
+	}
+
+	function isStartSelected(month: number): boolean {
+		return customStartMonth === month && customStartYear === rangeStartPickerYear;
+	}
+
+	function isEndSelected(month: number): boolean {
+		return customEndMonth === month && customEndYear === rangeEndPickerYear;
 	}
 
 	function prevYear() {
@@ -445,10 +612,32 @@
 		pickerYear = pickerYear + 1;
 	}
 
-	// Reload data when month changes
+	function prevRangeStartYear() {
+		rangeStartPickerYear = rangeStartPickerYear - 1;
+	}
+
+	function nextRangeStartYear() {
+		rangeStartPickerYear = rangeStartPickerYear + 1;
+	}
+
+	function prevRangeEndYear() {
+		rangeEndPickerYear = rangeEndPickerYear - 1;
+	}
+
+	function nextRangeEndYear() {
+		rangeEndPickerYear = rangeEndPickerYear + 1;
+	}
+
+	// Reload data when month/range changes or initialization completes
 	$effect(() => {
-		// Track currentDate to trigger reload
+		// Wait for initialization to complete
+		if (!rangeInitialized) return;
+		
+		// Track currentDate for single mode
 		const _ = currentDate.getTime();
+		// Track range mode to ensure we reload on mode change
+		const __ = rangeMode;
+		
 		loadCategories();
 	});
 </script>
@@ -483,6 +672,7 @@
 	{#if showMonthPicker}
 		<button class="month-picker-overlay" onclick={toggleMonthPicker} aria-label="Close month picker"></button>
 		<div class="month-picker">
+			<!-- Single Month Selection -->
 			<div class="month-picker-header">
 				<button class="year-nav" onclick={prevYear} aria-label="Previous year">
 					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
@@ -507,6 +697,101 @@
 						{name}
 					</button>
 				{/each}
+			</div>
+
+			<!-- Custom Range Section -->
+			<div class="custom-range-section">
+				<div class="range-divider">
+					<span>Custom Range</span>
+				</div>
+
+				<!-- Range Tabs -->
+				<div class="range-tabs">
+					<button 
+						class="range-tab" 
+						class:active={rangePickerTab === 'start'}
+						onclick={() => rangePickerTab = 'start'}
+					>
+						<span class="range-tab-label">From</span>
+						<span class="range-tab-value">{monthNames[customStartMonth]} {customStartYear}</span>
+					</button>
+					<button 
+						class="range-tab" 
+						class:active={rangePickerTab === 'end'}
+						onclick={() => rangePickerTab = 'end'}
+					>
+						<span class="range-tab-label">To</span>
+						<span class="range-tab-value">{monthNames[customEndMonth]} {customEndYear}</span>
+					</button>
+				</div>
+
+				<!-- Range Month Grid (Start) -->
+				{#if rangePickerTab === 'start'}
+					<div class="range-picker-header">
+						<button class="year-nav" onclick={prevRangeStartYear} aria-label="Previous year">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+							</svg>
+						</button>
+						<span class="picker-year-small">{rangeStartPickerYear}</span>
+						<button class="year-nav" onclick={nextRangeStartYear} aria-label="Next year">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					</div>
+					<div class="month-grid range-grid">
+						{#each monthNames as name, index}
+							<button 
+								class="month-cell range-cell" 
+								class:selected={isStartSelected(index)}
+								onclick={() => selectRangeStart(index)}
+							>
+								{name}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Range Month Grid (End) -->
+				{#if rangePickerTab === 'end'}
+					<div class="range-picker-header">
+						<button class="year-nav" onclick={prevRangeEndYear} aria-label="Previous year">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+							</svg>
+						</button>
+						<span class="picker-year-small">{rangeEndPickerYear}</span>
+						<button class="year-nav" onclick={nextRangeEndYear} aria-label="Next year">
+							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					</div>
+					<div class="month-grid range-grid">
+						{#each monthNames as name, index}
+							<button 
+								class="month-cell range-cell" 
+								class:selected={isEndSelected(index)}
+								onclick={() => selectRangeEnd(index)}
+							>
+								{name}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Apply / Clear Buttons -->
+				<div class="range-actions">
+					{#if rangeMode === 'custom'}
+						<button class="range-clear-btn" onclick={clearCustomRange}>
+							Clear Range
+						</button>
+					{/if}
+					<button class="range-apply-btn" onclick={applyCustomRange}>
+						Apply Range
+					</button>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -551,6 +836,7 @@
 						{@const isOverBudget = target && spent > target}
 						{@const remaining = target ? Math.max(0, target - spent) : null}
 						{@const spentColor = getSpentColor(spent)}
+						{@const spentDisplay = spent < 0 ? '+' + formatCurrency(Math.abs(spent)) : formatCurrency(spent)}
 						<button 
 							class="category-row"
 							onclick={() => goto(`/plan/categories/${category.category_id}`)}
@@ -567,7 +853,7 @@
 									class:over-budget={isOverBudget}
 									style="color: {spentColor}"
 								>
-									{formatCurrency(spent)}
+									{spentDisplay}
 								</span>
 							</div>
 						</button>
@@ -633,14 +919,14 @@
 	}
 
 	.summary-value.target {
-		color: var(--color-primary);
+		color: var(--color-warning);
 	}
 
 	/* Sticky Column Header */
 	.column-header-sticky {
 		position: sticky;
 		top: 0;
-		z-index: 10;
+		z-index: 60;
 		display: flex;
 		justify-content: flex-end;
 		padding: 10px 16px;
@@ -663,6 +949,7 @@
 	.categories-list {
 		flex: 1;
 		overflow-y: auto;
+		padding-bottom: 80px;
 	}
 
 	/* Group Header */
@@ -825,11 +1112,13 @@
 		left: 16px;
 		right: 16px;
 		max-width: 320px;
+		max-height: calc(100vh - 80px);
+		max-height: calc(100dvh - 80px);
+		overflow-y: auto;
 		background-color: var(--color-bg-secondary);
 		border-radius: 12px;
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 		z-index: 101;
-		overflow: hidden;
 	}
 
 	.month-picker-header {
@@ -897,5 +1186,131 @@
 		background-color: var(--color-primary);
 		color: white;
 		font-weight: 600;
+	}
+
+	/* Custom Range Section */
+	.custom-range-section {
+		border-top: 1px solid var(--color-border);
+	}
+
+	.range-divider {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 12px 16px 8px;
+	}
+
+	.range-divider span {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.range-tabs {
+		display: flex;
+		gap: 8px;
+		padding: 0 16px 12px;
+	}
+
+	.range-tab {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 10px 12px;
+		background-color: var(--color-bg-tertiary);
+		border: 2px solid transparent;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		min-height: 44px;
+	}
+
+	.range-tab.active {
+		border-color: var(--color-primary);
+		background-color: var(--color-bg-primary);
+	}
+
+	.range-tab-label {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+	}
+
+	.range-tab-value {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin-top: 2px;
+	}
+
+	.range-picker-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 16px;
+	}
+
+	.picker-year-small {
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.range-grid {
+		padding-top: 8px;
+		padding-bottom: 8px;
+	}
+
+	.range-cell {
+		padding: 8px 6px;
+		min-height: 36px;
+		font-size: 13px;
+	}
+
+	.range-actions {
+		display: flex;
+		gap: 8px;
+		padding: 12px 16px 16px;
+	}
+
+	.range-apply-btn {
+		flex: 1;
+		padding: 12px 16px;
+		background-color: var(--color-primary);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		min-height: 44px;
+		transition: background-color 0.15s ease;
+	}
+
+	.range-apply-btn:hover {
+		background-color: var(--color-primary-hover);
+	}
+
+	.range-clear-btn {
+		padding: 12px 16px;
+		background: none;
+		color: var(--color-text-muted);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		min-height: 44px;
+		transition: all 0.15s ease;
+	}
+
+	.range-clear-btn:hover {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
 	}
 </style>
