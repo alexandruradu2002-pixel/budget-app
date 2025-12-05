@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Offline - Budget App</title>
+    <link rel="icon" href="/favicon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#3B82F6">
+    <style>
+        :root {
+            --color-primary: #3B82F6;
+            --color-bg-primary: #0F172A;
+            --color-bg-secondary: #1E293B;
+            --color-text-primary: #F8FAFC;
+            --color-text-secondary: #CBD5E1;
+            --color-text-muted: #94A3B8;
+            --color-border: #334155;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .offline-container {
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .offline-icon {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 1.5rem;
+            color: var(--color-text-muted);
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--color-text-primary);
+        }
+        
+        p {
+            color: var(--color-text-secondary);
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+        
+        .retry-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background-color: var(--color-primary);
+            color: white;
+            padding: 0.875rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            min-height: 48px;
+        }
+        
+        .retry-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .retry-btn:active {
+            opacity: 0.8;
+        }
+        
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: var(--color-bg-secondary);
+            border-radius: 0.75rem;
+            border: 1px solid var(--color-border);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--color-text-muted);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #EF4444;
+        }
+        
+        .status-dot.online {
+            background-color: #10B981;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .cached-data-info {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: var(--color-text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <!-- Offline Icon -->
+        <svg class="offline-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" 
+                d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a5 5 0 01-1.414-7.072m0 0L9.879 11.293M3 3l18 18M5.636 5.636a9 9 0 000 12.728m0 0L3 21" />
+        </svg>
+        
+        <h1>Ești offline</h1>
+        <p>Nu există conexiune la internet. Verifică conexiunea și încearcă din nou.</p>
+        
+        <button class="retry-btn" onclick="checkConnection()">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Încearcă din nou
+        </button>
+        
+        <div class="status">
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Verificare conexiune...</span>
+            </div>
+            <p class="cached-data-info" id="cachedInfo" style="display: none;">
+                Datele salvate anterior sunt disponibile.
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const cachedInfo = document.getElementById('cachedInfo');
+        
+        function updateStatus() {
+            if (navigator.onLine) {
+                statusDot.classList.add('online');
+                statusText.textContent = 'Conexiune restaurată!';
+                // Redirect to the page they were trying to access
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                statusDot.classList.remove('online');
+                statusText.textContent = 'Fără conexiune';
+            }
+        }
+        
+        function checkConnection() {
+            statusText.textContent = 'Verificare conexiune...';
+            
+            // Try to fetch a small resource to verify connectivity
+            fetch('/manifest.json', { cache: 'no-store' })
+                .then(response => {
+                    if (response.ok) {
+                        statusDot.classList.add('online');
+                        statusText.textContent = 'Conexiune restaurată!';
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 500);
+                    } else {
+                        throw new Error('Not connected');
+                    }
+                })
+                .catch(() => {
+                    statusDot.classList.remove('online');
+                    statusText.textContent = 'Încă offline';
+                });
+        }
+        
+        // Check if IndexedDB has cached data
+        async function checkCachedData() {
+            try {
+                const dbRequest = indexedDB.open('budget_app_offline', 1);
+                dbRequest.onsuccess = (event) => {
+                    const db = event.target.result;
+                    if (db.objectStoreNames.contains('accounts')) {
+                        const tx = db.transaction('accounts', 'readonly');
+                        const store = tx.objectStore('accounts');
+                        const countRequest = store.count();
+                        countRequest.onsuccess = () => {
+                            if (countRequest.result > 0) {
+                                cachedInfo.style.display = 'block';
+                            }
+                        };
+                    }
+                };
+            } catch (e) {
+                // IndexedDB not available
+            }
+        }
+        
+        // Listen for online/offline events
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
+        
+        // Initial status check
+        updateStatus();
+        checkCachedData();
+    </script>
+</body>
+</html>

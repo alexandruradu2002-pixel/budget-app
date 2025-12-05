@@ -20,10 +20,11 @@
 	type PlanRangeMode = 'single' | 'custom';
 	interface PlanRange {
 		mode: PlanRangeMode;
-		startMonth: number; // 0-11
-		startYear: number;
-		endMonth: number; // 0-11
-		endYear: number;
+		startDate: string; // YYYY-MM-DD format
+		endDate: string; // YYYY-MM-DD format
+		// Keep month/year for single mode
+		startMonth?: number;
+		startYear?: number;
 	}
 
 	// Load saved range from localStorage
@@ -53,15 +54,17 @@
 	let showMonthPicker = $state(false);
 	let pickerYear = $state(new Date().getFullYear());
 
-	// Custom range state
+	// Custom range state - using full dates
 	let rangeMode = $state<PlanRangeMode>('single');
-	let customStartMonth = $state(new Date().getMonth());
-	let customStartYear = $state(new Date().getFullYear());
-	let customEndMonth = $state(new Date().getMonth());
-	let customEndYear = $state(new Date().getFullYear());
+	let customStartDate = $state(new Date().toISOString().split('T')[0]); // YYYY-MM-DD
+	let customEndDate = $state(new Date().toISOString().split('T')[0]); // YYYY-MM-DD
 	let rangePickerTab = $state<'start' | 'end'>('start');
-	let rangeStartPickerYear = $state(new Date().getFullYear());
-	let rangeEndPickerYear = $state(new Date().getFullYear());
+	
+	// Calendar state for range pickers
+	let rangeStartCalendarMonth = $state(new Date().getMonth());
+	let rangeStartCalendarYear = $state(new Date().getFullYear());
+	let rangeEndCalendarMonth = $state(new Date().getMonth());
+	let rangeEndCalendarYear = $state(new Date().getFullYear());
 	let rangeInitialized = $state(false);
 
 	// Initialize from localStorage on mount
@@ -69,13 +72,16 @@
 		const saved = loadSavedRange();
 		if (saved) {
 			rangeMode = saved.mode;
-			if (saved.mode === 'custom') {
-				customStartMonth = saved.startMonth;
-				customStartYear = saved.startYear;
-				customEndMonth = saved.endMonth;
-				customEndYear = saved.endYear;
-				rangeStartPickerYear = saved.startYear;
-				rangeEndPickerYear = saved.endYear;
+			if (saved.mode === 'custom' && saved.startDate && saved.endDate) {
+				customStartDate = saved.startDate;
+				customEndDate = saved.endDate;
+				// Set calendar months to match saved dates
+				const startParts = saved.startDate.split('-').map(Number);
+				const endParts = saved.endDate.split('-').map(Number);
+				rangeStartCalendarYear = startParts[0];
+				rangeStartCalendarMonth = startParts[1] - 1;
+				rangeEndCalendarYear = endParts[0];
+				rangeEndCalendarMonth = endParts[1] - 1;
 			}
 		}
 		rangeInitialized = true;
@@ -86,6 +92,56 @@
 
 	// Month names for the calendar grid
 	const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+	const monthNamesFull = ['Ianuarie', 'Februarie', 'Martie', 'Aprilie', 'Mai', 'Iunie', 
+		'Iulie', 'August', 'Septembrie', 'Octombrie', 'Noiembrie', 'Decembrie'];
+	const dayNames = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+	// Calendar helper functions
+	function getDaysInMonth(year: number, month: number): number {
+		return new Date(year, month + 1, 0).getDate();
+	}
+
+	function getFirstDayOfMonth(year: number, month: number): number {
+		// Return 0 for Monday, 6 for Sunday (European week starts Monday)
+		const day = new Date(year, month, 1).getDay();
+		return day === 0 ? 6 : day - 1;
+	}
+
+	// Generate calendar days for start date picker
+	let startCalendarDays = $derived.by(() => {
+		const daysInMonth = getDaysInMonth(rangeStartCalendarYear, rangeStartCalendarMonth);
+		const firstDay = getFirstDayOfMonth(rangeStartCalendarYear, rangeStartCalendarMonth);
+		const days: (number | null)[] = [];
+		
+		for (let i = 0; i < firstDay; i++) {
+			days.push(null);
+		}
+		for (let i = 1; i <= daysInMonth; i++) {
+			days.push(i);
+		}
+		return days;
+	});
+
+	// Generate calendar days for end date picker
+	let endCalendarDays = $derived.by(() => {
+		const daysInMonth = getDaysInMonth(rangeEndCalendarYear, rangeEndCalendarMonth);
+		const firstDay = getFirstDayOfMonth(rangeEndCalendarYear, rangeEndCalendarMonth);
+		const days: (number | null)[] = [];
+		
+		for (let i = 0; i < firstDay; i++) {
+			days.push(null);
+		}
+		for (let i = 1; i <= daysInMonth; i++) {
+			days.push(i);
+		}
+		return days;
+	});
+
+	// Format date for display
+	function formatDateShort(dateStr: string): string {
+		const [year, month, day] = dateStr.split('-').map(Number);
+		return `${day} ${monthNames[month - 1]} ${year}`;
+	}
 
 	// Load months that have transactions
 	async function loadMonthsWithTransactions() {
@@ -276,10 +332,9 @@
 			let endDate: string;
 			
 			if (rangeMode === 'custom') {
-				// Custom range mode
-				startDate = `${customStartYear}-${String(customStartMonth + 1).padStart(2, '0')}-01`;
-				const lastDay = new Date(customEndYear, customEndMonth + 1, 0).getDate();
-				endDate = `${customEndYear}-${String(customEndMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+				// Custom range mode - use exact dates
+				startDate = customStartDate;
+				endDate = customEndDate;
 			} else {
 				// Single month mode
 				const year = currentDate.getFullYear();
@@ -482,9 +537,9 @@
 	// Display title - shows range or single month
 	let displayMonth = $derived.by(() => {
 		if (rangeMode === 'custom') {
-			const startStr = formatMonthYearShort(new Date(customStartYear, customStartMonth, 1));
-			const endStr = formatMonthYearShort(new Date(customEndYear, customEndMonth, 1));
-			if (customStartYear === customEndYear && customStartMonth === customEndMonth) {
+			const startStr = formatDateShort(customStartDate);
+			const endStr = formatDateShort(customEndDate);
+			if (customStartDate === customEndDate) {
 				return startStr;
 			}
 			return `${startStr} - ${endStr}`;
@@ -518,10 +573,10 @@
 		// Save single month mode
 		saveRange({
 			mode: 'single',
+			startDate: `${pickerYear}-${String(month + 1).padStart(2, '0')}-01`,
+			endDate: `${pickerYear}-${String(month + 1).padStart(2, '0')}-${String(getDaysInMonth(pickerYear, month)).padStart(2, '0')}`,
 			startMonth: month,
-			startYear: pickerYear,
-			endMonth: month,
-			endYear: pickerYear
+			startYear: pickerYear
 		});
 		showMonthPicker = false;
 	}
@@ -534,32 +589,41 @@
 			   currentDate.getMonth() === month;
 	}
 
-	// Custom range selection
-	function selectRangeStart(month: number) {
-		customStartMonth = month;
-		customStartYear = rangeStartPickerYear;
+	// Custom range day selection
+	function selectRangeStartDay(day: number) {
+		const month = String(rangeStartCalendarMonth + 1).padStart(2, '0');
+		const dayStr = String(day).padStart(2, '0');
+		customStartDate = `${rangeStartCalendarYear}-${month}-${dayStr}`;
 		// Auto-switch to end tab after selecting start
 		rangePickerTab = 'end';
 	}
 
-	function selectRangeEnd(month: number) {
-		customEndMonth = month;
-		customEndYear = rangeEndPickerYear;
+	function selectRangeEndDay(day: number) {
+		const month = String(rangeEndCalendarMonth + 1).padStart(2, '0');
+		const dayStr = String(day).padStart(2, '0');
+		customEndDate = `${rangeEndCalendarYear}-${month}-${dayStr}`;
+	}
+
+	function isStartDaySelected(day: number): boolean {
+		const [year, month, d] = customStartDate.split('-').map(Number);
+		return day === d && rangeStartCalendarMonth === month - 1 && rangeStartCalendarYear === year;
+	}
+
+	function isEndDaySelected(day: number): boolean {
+		const [year, month, d] = customEndDate.split('-').map(Number);
+		return day === d && rangeEndCalendarMonth === month - 1 && rangeEndCalendarYear === year;
 	}
 
 	function applyCustomRange() {
 		// Validate that end is >= start
-		const startDate = new Date(customStartYear, customStartMonth, 1);
-		const endDate = new Date(customEndYear, customEndMonth, 1);
+		const startDateObj = new Date(customStartDate);
+		const endDateObj = new Date(customEndDate);
 		
-		if (endDate < startDate) {
+		if (endDateObj < startDateObj) {
 			// Swap if end is before start
-			const tempMonth = customStartMonth;
-			const tempYear = customStartYear;
-			customStartMonth = customEndMonth;
-			customStartYear = customEndYear;
-			customEndMonth = tempMonth;
-			customEndYear = tempYear;
+			const temp = customStartDate;
+			customStartDate = customEndDate;
+			customEndDate = temp;
 		}
 		
 		rangeMode = 'custom';
@@ -567,10 +631,8 @@
 		// Save to localStorage
 		saveRange({
 			mode: 'custom',
-			startMonth: customStartMonth,
-			startYear: customStartYear,
-			endMonth: customEndMonth,
-			endYear: customEndYear
+			startDate: customStartDate,
+			endDate: customEndDate
 		});
 		
 		showMonthPicker = false;
@@ -581,27 +643,57 @@
 	function clearCustomRange() {
 		rangeMode = 'single';
 		currentDate = new Date();
-		customStartMonth = currentDate.getMonth();
-		customStartYear = currentDate.getFullYear();
-		customEndMonth = currentDate.getMonth();
-		customEndYear = currentDate.getFullYear();
+		const today = new Date().toISOString().split('T')[0];
+		customStartDate = today;
+		customEndDate = today;
 		
 		// Save single month mode
+		const month = currentDate.getMonth();
+		const year = currentDate.getFullYear();
 		saveRange({
 			mode: 'single',
-			startMonth: currentDate.getMonth(),
-			startYear: currentDate.getFullYear(),
-			endMonth: currentDate.getMonth(),
-			endYear: currentDate.getFullYear()
+			startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+			endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`,
+			startMonth: month,
+			startYear: year
 		});
 	}
 
-	function isStartSelected(month: number): boolean {
-		return customStartMonth === month && customStartYear === rangeStartPickerYear;
+	// Calendar navigation for range pickers
+	function prevStartMonth() {
+		if (rangeStartCalendarMonth === 0) {
+			rangeStartCalendarMonth = 11;
+			rangeStartCalendarYear--;
+		} else {
+			rangeStartCalendarMonth--;
+		}
 	}
 
-	function isEndSelected(month: number): boolean {
-		return customEndMonth === month && customEndYear === rangeEndPickerYear;
+	function nextStartMonth() {
+		if (rangeStartCalendarMonth === 11) {
+			rangeStartCalendarMonth = 0;
+			rangeStartCalendarYear++;
+		} else {
+			rangeStartCalendarMonth++;
+		}
+	}
+
+	function prevEndMonth() {
+		if (rangeEndCalendarMonth === 0) {
+			rangeEndCalendarMonth = 11;
+			rangeEndCalendarYear--;
+		} else {
+			rangeEndCalendarMonth--;
+		}
+	}
+
+	function nextEndMonth() {
+		if (rangeEndCalendarMonth === 11) {
+			rangeEndCalendarMonth = 0;
+			rangeEndCalendarYear++;
+		} else {
+			rangeEndCalendarMonth++;
+		}
 	}
 
 	function prevYear() {
@@ -610,22 +702,6 @@
 
 	function nextYear() {
 		pickerYear = pickerYear + 1;
-	}
-
-	function prevRangeStartYear() {
-		rangeStartPickerYear = rangeStartPickerYear - 1;
-	}
-
-	function nextRangeStartYear() {
-		rangeStartPickerYear = rangeStartPickerYear + 1;
-	}
-
-	function prevRangeEndYear() {
-		rangeEndPickerYear = rangeEndPickerYear - 1;
-	}
-
-	function nextRangeEndYear() {
-		rangeEndPickerYear = rangeEndPickerYear + 1;
 	}
 
 	// Reload data when month/range changes or initialization completes
@@ -713,7 +789,7 @@
 						onclick={() => rangePickerTab = 'start'}
 					>
 						<span class="range-tab-label">From</span>
-						<span class="range-tab-value">{monthNames[customStartMonth]} {customStartYear}</span>
+						<span class="range-tab-value">{formatDateShort(customStartDate)}</span>
 					</button>
 					<button 
 						class="range-tab" 
@@ -721,62 +797,80 @@
 						onclick={() => rangePickerTab = 'end'}
 					>
 						<span class="range-tab-label">To</span>
-						<span class="range-tab-value">{monthNames[customEndMonth]} {customEndYear}</span>
+						<span class="range-tab-value">{formatDateShort(customEndDate)}</span>
 					</button>
 				</div>
 
-				<!-- Range Month Grid (Start) -->
+				<!-- Range Day Calendar (Start) -->
 				{#if rangePickerTab === 'start'}
 					<div class="range-picker-header">
-						<button class="year-nav" onclick={prevRangeStartYear} aria-label="Previous year">
+						<button class="year-nav" onclick={prevStartMonth} aria-label="Previous month">
 							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 							</svg>
 						</button>
-						<span class="picker-year-small">{rangeStartPickerYear}</span>
-						<button class="year-nav" onclick={nextRangeStartYear} aria-label="Next year">
+						<span class="picker-year-small">{monthNamesFull[rangeStartCalendarMonth]} {rangeStartCalendarYear}</span>
+						<button class="year-nav" onclick={nextStartMonth} aria-label="Next month">
 							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 							</svg>
 						</button>
 					</div>
-					<div class="month-grid range-grid">
-						{#each monthNames as name, index}
-							<button 
-								class="month-cell range-cell" 
-								class:selected={isStartSelected(index)}
-								onclick={() => selectRangeStart(index)}
-							>
-								{name}
-							</button>
+					<div class="day-names-header">
+						{#each dayNames as dayName}
+							<span class="day-name">{dayName}</span>
+						{/each}
+					</div>
+					<div class="days-grid">
+						{#each startCalendarDays as day}
+							{#if day === null}
+								<span class="day-empty"></span>
+							{:else}
+								<button
+									class="day-btn"
+									class:selected={isStartDaySelected(day)}
+									onclick={() => selectRangeStartDay(day)}
+								>
+									{day}
+								</button>
+							{/if}
 						{/each}
 					</div>
 				{/if}
 
-				<!-- Range Month Grid (End) -->
+				<!-- Range Day Calendar (End) -->
 				{#if rangePickerTab === 'end'}
 					<div class="range-picker-header">
-						<button class="year-nav" onclick={prevRangeEndYear} aria-label="Previous year">
+						<button class="year-nav" onclick={prevEndMonth} aria-label="Previous month">
 							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 							</svg>
 						</button>
-						<span class="picker-year-small">{rangeEndPickerYear}</span>
-						<button class="year-nav" onclick={nextRangeEndYear} aria-label="Next year">
+						<span class="picker-year-small">{monthNamesFull[rangeEndCalendarMonth]} {rangeEndCalendarYear}</span>
+						<button class="year-nav" onclick={nextEndMonth} aria-label="Next month">
 							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 							</svg>
 						</button>
 					</div>
-					<div class="month-grid range-grid">
-						{#each monthNames as name, index}
-							<button 
-								class="month-cell range-cell" 
-								class:selected={isEndSelected(index)}
-								onclick={() => selectRangeEnd(index)}
-							>
-								{name}
-							</button>
+					<div class="day-names-header">
+						{#each dayNames as dayName}
+							<span class="day-name">{dayName}</span>
+						{/each}
+					</div>
+					<div class="days-grid">
+						{#each endCalendarDays as day}
+							{#if day === null}
+								<span class="day-empty"></span>
+							{:else}
+								<button
+									class="day-btn"
+									class:selected={isEndDaySelected(day)}
+									onclick={() => selectRangeEndDay(day)}
+								>
+									{day}
+								</button>
+							{/if}
 						{/each}
 					</div>
 				{/if}
@@ -1261,17 +1355,6 @@
 		color: var(--color-text-primary);
 	}
 
-	.range-grid {
-		padding-top: 8px;
-		padding-bottom: 8px;
-	}
-
-	.range-cell {
-		padding: 8px 6px;
-		min-height: 36px;
-		font-size: 13px;
-	}
-
 	.range-actions {
 		display: flex;
 		gap: 8px;
@@ -1312,5 +1395,59 @@
 	.range-clear-btn:hover {
 		background-color: var(--color-bg-tertiary);
 		color: var(--color-text-primary);
+	}
+
+	/* Day Calendar Styles */
+	.day-names-header {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		padding: 4px 16px;
+		gap: 2px;
+	}
+
+	.day-name {
+		text-align: center;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		padding: 4px 0;
+	}
+
+	.days-grid {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 2px;
+		padding: 4px 16px 12px;
+	}
+
+	.day-empty {
+		aspect-ratio: 1;
+	}
+
+	.day-btn {
+		aspect-ratio: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		border-radius: 50%;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		min-width: 32px;
+		min-height: 32px;
+	}
+
+	.day-btn:hover {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.day-btn.selected {
+		background-color: var(--color-primary);
+		color: white;
+		font-weight: 600;
 	}
 </style>

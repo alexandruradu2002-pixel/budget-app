@@ -1,12 +1,18 @@
 // Service Worker for Budget App PWA
-// Version 2 - With offline API support
-const CACHE_NAME = 'budget-app-v2';
-const API_CACHE_NAME = 'budget-app-api-v1';
+// Version 3 - With improved offline support
+const CACHE_NAME = 'budget-app-v3';
+const API_CACHE_NAME = 'budget-app-api-v2';
+const OFFLINE_PAGE = '/offline.html';
 
 // Static resources to cache immediately
 const STATIC_RESOURCES = [
 	'/',
 	'/manifest.json',
+	'/offline.html'
+];
+
+// Protected pages that should use app shell pattern
+const PROTECTED_PAGES = [
 	'/dashboard',
 	'/spending',
 	'/accounts',
@@ -59,6 +65,12 @@ self.addEventListener('activate', (event) => {
 	);
 	self.clients.claim();
 });
+
+// Check if URL is a protected page
+function isProtectedPage(url) {
+	const pathname = new URL(url).pathname;
+	return PROTECTED_PAGES.some(page => pathname === page || pathname.startsWith(page + '/'));
+}
 
 // Check if URL is a cacheable API endpoint (GET only)
 function isCacheableApi(url) {
@@ -189,6 +201,12 @@ self.addEventListener('fetch', (event) => {
 	// Skip other API requests (auth, mutations, etc.) - always go to network
 	if (event.request.url.includes('/api/')) return;
 
+	// Handle navigation requests for protected pages
+	if (event.request.mode === 'navigate' && isProtectedPage(event.request.url)) {
+		event.respondWith(handleNavigationRequest(event.request));
+		return;
+	}
+
 	// Handle static resources with network-first, cache fallback
 	event.respondWith(
 		fetch(event.request)
@@ -206,10 +224,55 @@ self.addEventListener('fetch', (event) => {
 			})
 			.catch(() => {
 				// Fallback to cache if network fails
-				return caches.match(event.request);
+				return caches.match(event.request).then(cachedResponse => {
+					if (cachedResponse) return cachedResponse;
+					// If it's a navigation request, show offline page
+					if (event.request.mode === 'navigate') {
+						return caches.match(OFFLINE_PAGE);
+					}
+					return cachedResponse;
+				});
 			})
 	);
 });
+
+// Handle navigation requests for protected pages
+async function handleNavigationRequest(request) {
+	// Try network first
+	try {
+		const response = await fetch(request);
+		
+		// If we get a redirect to login, we might be offline or session expired
+		// Cache successful page responses
+		if (response.ok) {
+			const cache = await caches.open(CACHE_NAME);
+			cache.put(request, response.clone());
+		}
+		
+		return response;
+	} catch (error) {
+		// Network failed - we're offline
+		// Try to return cached version of the page
+		const cache = await caches.open(CACHE_NAME);
+		const cachedResponse = await cache.match(request);
+		
+		if (cachedResponse) {
+			return cachedResponse;
+		}
+		
+		// No cached version - return offline page
+		const offlinePage = await caches.match(OFFLINE_PAGE);
+		if (offlinePage) {
+			return offlinePage;
+		}
+		
+		// Last resort - return a basic offline response
+		return new Response(
+			'<html><body><h1>Offline</h1><p>Nu există conexiune la internet.</p></body></html>',
+			{ headers: { 'Content-Type': 'text/html' } }
+		);
+	}
+}
 
 // Background sync for pending operations
 self.addEventListener('sync', (event) => {

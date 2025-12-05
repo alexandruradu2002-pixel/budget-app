@@ -55,5 +55,23 @@ export const handle: Handle = async ({ event, resolve }) => {
 		});
 	}
 
-	return resolve(event);
+	const response = await resolve(event);
+	
+	// Add caching headers for protected pages to enable offline access
+	// Service Worker will cache these pages when online
+	if (isProtectedRoute && response.headers.get('content-type')?.includes('text/html')) {
+		const headers = new Headers(response.headers);
+		// Allow service worker to cache but revalidate when online
+		headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+		// Enable caching in service worker
+		headers.set('X-SW-Cacheable', 'true');
+		
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers
+		});
+	}
+	
+	return response;
 };
