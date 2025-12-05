@@ -16,7 +16,9 @@
 
 <script lang="ts">
 	import type { Account } from '$lib/types';
+	import type { LocationSuggestion } from '$lib/types';
 	import { cacheStore, type Payee } from '$lib/stores';
+	import { getCurrentPosition, getLocationSuggestions } from '$lib/utils/geolocation';
 
 	// Props
 	let {
@@ -36,11 +38,28 @@
 	let error = $state('');
 	let searchInputRef = $state<HTMLInputElement | null>(null);
 
+	// Near Me state
+	let nearMePayees = $state<LocationSuggestion[]>([]);
+	let nearMeLoading = $state(false);
+	let nearMeExpanded = $state(true);
+	let locationError = $state<string | null>(null);
+
 	// Filter payees client-side based on search query
 	let payees = $derived.by(() => {
 		if (!searchQuery.trim()) return allPayees;
 		const query = searchQuery.toLowerCase();
 		return allPayees.filter(p => p.name.toLowerCase().includes(query));
+	});
+
+	// Filter transfer accounts based on search query
+	let filteredTransferAccounts = $derived.by(() => {
+		const activeTransfers = accounts.filter(a => a.is_active && a.id !== currentAccountId);
+		if (!searchQuery.trim()) return activeTransfers;
+		const query = searchQuery.toLowerCase();
+		return activeTransfers.filter(a => 
+			a.name.toLowerCase().includes(query) || 
+			'transfer'.includes(query)
+		);
 	});
 
 	// Collapsible sections state
@@ -59,11 +78,6 @@
 	let payeeToEdit = $state<string | null>(null);
 	let editNewName = $state('');
 	let editLoading = $state(false);
-
-	// Filter accounts for transfer (exclude current account)
-	let transferAccounts = $derived(
-		accounts.filter(a => a.is_active && a.id !== currentAccountId)
-	);
 
 	// Check URL hash on mount to restore state after reload
 	$effect(() => {
@@ -87,6 +101,7 @@
 			// Reset search and load all payees when modal opens
 			searchQuery = '';
 			loadPayees();
+			loadNearMePayees();
 			// Update URL hash so reload keeps the modal open
 			if (typeof window !== 'undefined' && window.location.hash !== '#payee-selector') {
 				history.pushState({ payeeSelector: true }, '', '#payee-selector');
@@ -126,6 +141,37 @@
 		}
 	}
 
+	async function loadNearMePayees() {
+		nearMeLoading = true;
+		locationError = null;
+		
+		try {
+			const posResult = await getCurrentPosition({ timeout: 5000, maximumAge: 30000 });
+			
+			if (!posResult.success) {
+				locationError = posResult.error.code === 'PERMISSION_DENIED' 
+					? 'Location access denied' 
+					: 'Could not get location';
+				nearMePayees = [];
+				return;
+			}
+			
+			const suggestions = await getLocationSuggestions(
+				posResult.position.latitude,
+				posResult.position.longitude
+			);
+			
+			// Filter to only suggestions with payee names
+			nearMePayees = suggestions.filter(s => s.payee);
+		} catch (e) {
+			console.error('Error loading near me payees:', e);
+			locationError = 'Could not load nearby payees';
+			nearMePayees = [];
+		} finally {
+			nearMeLoading = false;
+		}
+	}
+
 	// Force refresh after edits/deletes
 	async function refreshPayees() {
 		await cacheStore.loadPayees(true);
@@ -157,8 +203,8 @@
 				if (!res.ok) {
 					console.error('Failed to save new payee');
 				} else {
-					// Invalidate cache so new payee appears next time
-					cacheStore.invalidatePayees();
+					// Force refresh cache to include new payee
+					await cacheStore.loadPayees(true);
 				}
 			} catch (e) {
 				console.error('Error saving payee:', e);
@@ -357,21 +403,79 @@
 					</button>
 				{/if}
 
+				<!-- Near Me Section -->
+				{#if !searchQuery && (nearMePayees.length > 0 || nearMeLoading)}
+					<button class="section-header" onclick={() => nearMeExpanded = !nearMeExpanded}>
+						<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+						</svg>
+						<span class="section-title">Near Me</span>
+						{#if nearMeLoading}
+							<div class="section-spinner"></div>
+						{:else}
+							<span class="section-count">{nearMePayees.length}</span>
+						{/if}
+						<svg class="chevron-icon" class:expanded={nearMeExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+					{#if nearMeExpanded}
+						<div class="payees-list">
+							{#if nearMeLoading}
+								<div class="near-me-loading">
+									<div class="spinner small"></div>
+									<span>Getting your location...</span>
+								</div>
+							{:else}
+								{#each nearMePayees as suggestion (suggestion.payee)}
+									<button 
+										class="payee-item near-me-item"
+										class:selected={selectedPayee === suggestion.payee}
+										onclick={() => selectPayee(suggestion.payee!)}
+									>
+										<div class="payee-icon location">
+											<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+												<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+											</svg>
+										</div>
+										<div class="payee-info">
+											<span class="payee-name">{suggestion.payee}</span>
+											<span class="payee-hint">
+												{suggestion.distance}m away
+												{#if suggestion.category_name}
+													• {suggestion.category_name}
+												{/if}
+											</span>
+										</div>
+										{#if selectedPayee === suggestion.payee}
+											<svg class="check-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+											</svg>
+										{/if}
+									</button>
+								{/each}
+							{/if}
+						</div>
+					{/if}
+				{/if}
+
 				<!-- Transfer Between Accounts Section -->
-				{#if transferAccounts.length > 0 && (!searchQuery || 'transfer'.includes(searchQuery.toLowerCase()))}
+				{#if filteredTransferAccounts.length > 0}
 					<button class="section-header" onclick={() => transfersExpanded = !transfersExpanded}>
 						<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
 						</svg>
 						<span class="section-title">Transfer Between Accounts</span>
-						<span class="section-count">{transferAccounts.length}</span>
+						<span class="section-count">{filteredTransferAccounts.length}</span>
 						<svg class="chevron-icon" class:expanded={transfersExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
 						</svg>
 					</button>
-					{#if transfersExpanded}
+					{#if transfersExpanded || searchQuery.trim()}
 						<div class="payees-list">
-							{#each transferAccounts as account (account.id)}
+							{#each filteredTransferAccounts as account (account.id)}
 								{@const transferPayeeName = `${TRANSFER_PAYEE_PREFIX}${account.name}`}
 								<button 
 									class="payee-item transfer-item"
@@ -400,7 +504,7 @@
 
 				<!-- Regular Payees Section -->
 				{#if payees.length > 0}
-					{#if transferAccounts.length > 0}
+					{#if filteredTransferAccounts.length > 0}
 						<button class="section-header" onclick={() => payeesExpanded = !payeesExpanded}>
 							<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -412,7 +516,7 @@
 							</svg>
 						</button>
 					{/if}
-					{#if payeesExpanded || transferAccounts.length === 0}
+					{#if payeesExpanded || filteredTransferAccounts.length === 0}
 						<div class="payees-list">
 							{#each payees as payee (payee.name)}
 								<div class="payee-item-wrapper">
@@ -745,6 +849,40 @@
 
 	.transfer-item {
 		background-color: transparent;
+	}
+
+	.near-me-item {
+		background-color: transparent;
+	}
+
+	.payee-icon.location {
+		background-color: var(--color-success);
+		background-color: rgba(16, 185, 129, 0.15);
+		color: var(--color-success);
+	}
+
+	.near-me-loading {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 16px;
+		color: var(--color-text-muted);
+		font-size: 14px;
+	}
+
+	.spinner.small {
+		width: 20px;
+		height: 20px;
+		border-width: 2px;
+	}
+
+	.section-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid var(--color-border);
+		border-top-color: var(--color-primary);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
 	}
 
 	/* Payee item wrapper for delete button */

@@ -50,39 +50,46 @@ export const GET: RequestHandler = async (event) => {
 
 	// Query payees from both the payees table and transaction descriptions
 	// Using UNION to combine and deduplicate
+	// Sort by usage in last 3 months for more relevant results
 	let sql: string;
 	const args: any[] = [];
+	
+	// Calculate date 3 months ago
+	const threeMonthsAgo = new Date();
+	threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+	const threeMonthsAgoStr = threeMonthsAgo.toISOString().split('T')[0];
 
 	if (search) {
-		// Search query - filter by name
+		// Search query - filter by name, count recent usage
 		sql = `
-			SELECT name, MAX(usage_count) as usage_count FROM (
-				SELECT name, 0 as usage_count FROM payees WHERE user_id = ? AND LOWER(name) LIKE LOWER(?)
-				UNION
-				SELECT description as name, COUNT(*) as usage_count
+			SELECT name, SUM(recent_usage) as usage_count FROM (
+				SELECT name, 0 as recent_usage FROM payees 
+				WHERE user_id = ? AND LOWER(name) LIKE LOWER(?)
+				UNION ALL
+				SELECT description as name, 1 as recent_usage
 				FROM transactions
-				WHERE user_id = ? AND description IS NOT NULL AND description != '' AND LOWER(description) LIKE LOWER(?)
-				GROUP BY description
+				WHERE user_id = ? AND description IS NOT NULL AND description != '' 
+					AND LOWER(description) LIKE LOWER(?)
+					AND date >= ?
 			) as combined
 			WHERE name IS NOT NULL AND name != ''
-			GROUP BY name ORDER BY usage_count DESC, name ASC LIMIT 100
+			GROUP BY name ORDER BY usage_count DESC, name ASC
 		`;
-		args.push(user.userId, `%${search}%`, user.userId, `%${search}%`);
+		args.push(user.userId, `%${search}%`, user.userId, `%${search}%`, threeMonthsAgoStr);
 	} else {
-		// No search - get all payees
+		// No search - get all payees, sorted by recent usage (last 3 months)
 		sql = `
-			SELECT name, MAX(usage_count) as usage_count FROM (
-				SELECT name, 0 as usage_count FROM payees WHERE user_id = ?
-				UNION
-				SELECT description as name, COUNT(*) as usage_count
+			SELECT name, SUM(recent_usage) as usage_count FROM (
+				SELECT name, 0 as recent_usage FROM payees WHERE user_id = ?
+				UNION ALL
+				SELECT description as name, 1 as recent_usage
 				FROM transactions
-				WHERE user_id = ? AND description IS NOT NULL AND description != ''
-				GROUP BY description
+				WHERE user_id = ? AND description IS NOT NULL AND description != '' AND date >= ?
 			) as combined
 			WHERE name IS NOT NULL AND name != ''
-			GROUP BY name ORDER BY usage_count DESC, name ASC LIMIT 100
+			GROUP BY name ORDER BY usage_count DESC, name ASC
 		`;
-		args.push(user.userId, user.userId);
+		args.push(user.userId, user.userId, threeMonthsAgoStr);
 	}
 
 	const result = await db.execute({ sql, args });
