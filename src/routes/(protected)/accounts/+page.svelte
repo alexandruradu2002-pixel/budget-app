@@ -3,7 +3,7 @@
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
 	import { formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
 	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
-	import { currencyStore } from '$lib/stores';
+	import { currencyStore, offlineStore, toast } from '$lib/stores';
 
 	interface CurrencyTotal {
 		currency: string;
@@ -156,6 +156,18 @@
 
 	async function loadAccounts() {
 		try {
+			// If offline, load from IndexedDB
+			if (!offlineStore.isOnline) {
+				const offlineAccounts = await offlineStore.getAccounts();
+				if (offlineAccounts.length > 0) {
+					accounts = offlineAccounts.filter((a: Account) => a.is_active);
+					closedAccounts = offlineAccounts.filter((a: Account) => !a.is_active);
+					toast.info('Showing cached accounts.');
+				}
+				loading = false;
+				return;
+			}
+
 			const response = await fetch('/api/accounts?includeInactive=true');
 			if (response.ok) {
 				const data = await response.json();
@@ -165,6 +177,17 @@
 			}
 		} catch (error) {
 			console.error('Failed to load accounts:', error);
+			// Fallback to offline data
+			try {
+				const offlineAccounts = await offlineStore.getAccounts();
+				if (offlineAccounts.length > 0) {
+					accounts = offlineAccounts.filter((a: Account) => a.is_active);
+					closedAccounts = offlineAccounts.filter((a: Account) => !a.is_active);
+					toast.info('Showing cached accounts.');
+				}
+			} catch {
+				// Ignore offline fallback errors
+			}
 		} finally {
 			loading = false;
 		}

@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Protected layout - LOGIN DISABLED: Single user mode
 	import { page } from '$app/stores';
-	import { currencyStore, cacheStore } from '$lib/stores';
+	import { currencyStore, cacheStore, offlineStore } from '$lib/stores';
+	import { OfflineIndicator } from '$lib/components';
 	
 	let { children } = $props();
 	let currentPath = $derived($page.url.pathname);
@@ -9,6 +10,7 @@
 	// Initialize stores (loads from localStorage cache first, then refreshes in background)
 	$effect(() => {
 		currencyStore.init();
+		offlineStore.init();
 		// Preload accounts and categories for instant modal loading
 		cacheStore.preloadEssentials();
 	});
@@ -32,6 +34,9 @@
 	<main class="main-content">
 		{@render children()}
 	</main>
+
+	<!-- Offline Status Indicator -->
+	<OfflineIndicator />
 
 	<!-- Bottom Navigation Bar - Fixed at bottom -->
 	<nav class="bottom-nav">

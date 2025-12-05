@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { Transaction, Account, Category } from '$lib/types';
+	import type { Transaction, Account, Category, ClearedStatus } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector, PayeeSelector } from '$lib/components';
 	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { offlineStore, toast } from '$lib/stores';
 
 	// Transaction payload type for save operations
 	interface TransactionPayload {
@@ -17,7 +18,7 @@
 		payee?: string;
 		memo?: string;
 		flag?: string;
-		cleared?: string;
+		cleared?: ClearedStatus;
 	}
 
 	const PAGE_SIZE = 20;
@@ -273,6 +274,40 @@
 			// Reset pagination when loading fresh data
 			currentOffset = 0;
 			
+			// If offline, try to load from IndexedDB
+			if (!offlineStore.isOnline) {
+				const [offlineTransactions, offlineAccounts, offlineCategories] = await Promise.all([
+					offlineStore.getTransactions(),
+					offlineStore.getAccounts(),
+					offlineStore.getCategories()
+				]);
+				
+				transactions = offlineTransactions;
+				totalTransactions = offlineTransactions.length;
+				accounts = offlineAccounts;
+				categories = offlineCategories;
+				
+				// Apply local filtering for search
+				if (initialSearch) {
+					const query = initialSearch.toLowerCase();
+					transactions = transactions.filter(tx => 
+						tx.description?.toLowerCase().includes(query) ||
+						tx.payee?.toLowerCase().includes(query)
+					);
+					totalTransactions = transactions.length;
+				}
+				
+				if (initialCategoryId) {
+					transactions = transactions.filter(tx => tx.category_id === initialCategoryId);
+					totalTransactions = transactions.length;
+					const cat = categories.find(c => c.id === initialCategoryId);
+					if (cat) selectedCategoryFilterName = cat.name;
+				}
+				
+				loading = false;
+				return;
+			}
+			
 			// Build query params for transactions
 			const searchParam = initialSearch ? `&search=${encodeURIComponent(initialSearch)}` : '';
 			const categoryParam = initialCategoryId ? `&categoryId=${initialCategoryId}` : '';
@@ -300,6 +335,25 @@
 			}
 		} catch (error) {
 			console.error('Failed to load data:', error);
+			
+			// Fallback to offline data on error
+			try {
+				const [offlineTransactions, offlineAccounts, offlineCategories] = await Promise.all([
+					offlineStore.getTransactions(),
+					offlineStore.getAccounts(),
+					offlineStore.getCategories()
+				]);
+				
+				if (offlineTransactions.length > 0 || offlineAccounts.length > 0) {
+					transactions = offlineTransactions;
+					totalTransactions = offlineTransactions.length;
+					accounts = offlineAccounts;
+					categories = offlineCategories;
+					toast.info('Loaded cached data. Some data may be outdated.');
+				}
+			} catch {
+				// Ignore offline fallback errors
+			}
 		} finally {
 			loading = false;
 		}
@@ -328,23 +382,62 @@
 
 	async function handleSaveTransaction(payload: TransactionPayload) {
 		try {
+			// Try online first
 			const res = await fetch('/api/transactions', {
 				method: payload.id ? 'PUT' : 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
 			});
-			if (res.ok) await reloadWithCurrentSearch();
+			if (res.ok) {
+				await reloadWithCurrentSearch();
+			} else if (!offlineStore.isOnline) {
+				// Offline - use offline store
+				const result = payload.id 
+					? await offlineStore.updateTransaction(payload.id, payload)
+					: await offlineStore.createTransaction(payload as Partial<Transaction>);
+				
+				if (result.success) {
+					toast.success(result.offline ? 'Transaction saved offline. Will sync when online.' : 'Transaction saved!');
+					await reloadWithCurrentSearch();
+				}
+			}
 		} catch (error) {
 			console.error('Failed to save transaction:', error);
+			// Try offline fallback
+			if (!offlineStore.isOnline) {
+				const result = payload.id 
+					? await offlineStore.updateTransaction(payload.id, payload)
+					: await offlineStore.createTransaction(payload as Partial<Transaction>);
+				
+				if (result.success) {
+					toast.success('Saved offline. Will sync when online.');
+					await reloadWithCurrentSearch();
+				}
+			}
 		}
 	}
 
 	async function handleDeleteTransaction(id: number) {
 		try {
 			const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
-			if (res.ok) await reloadWithCurrentSearch();
+			if (res.ok) {
+				await reloadWithCurrentSearch();
+			} else if (!offlineStore.isOnline) {
+				const result = await offlineStore.deleteTransaction(id);
+				if (result.success) {
+					toast.success('Deleted offline. Will sync when online.');
+					await reloadWithCurrentSearch();
+				}
+			}
 		} catch (error) {
 			console.error('Failed to delete transaction:', error);
+			if (!offlineStore.isOnline) {
+				const result = await offlineStore.deleteTransaction(id);
+				if (result.success) {
+					toast.success('Deleted offline. Will sync when online.');
+					await reloadWithCurrentSearch();
+				}
+			}
 		}
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { LoadingState, PageHeader, HeaderButton, WorkInProgress } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
+	import { offlineStore, toast } from '$lib/stores';
 
 	let stats = $state({
 		totalBalance: 0,
@@ -15,14 +16,69 @@
 
 	async function loadDashboard() {
 		try {
+			// Try online first
 			const response = await fetch('/api/dashboard', { credentials: 'include' });
 			if (response.ok) {
 				stats = await response.json();
+			} else if (!offlineStore.isOnline) {
+				// Offline - try to calculate from cached data
+				await loadFromOfflineData();
 			}
 		} catch (error) {
 			console.error('Failed to load dashboard:', error);
+			// Fallback to offline data
+			if (!offlineStore.isOnline) {
+				await loadFromOfflineData();
+			}
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadFromOfflineData() {
+		try {
+			const [accounts, transactions] = await Promise.all([
+				offlineStore.getAccounts(),
+				offlineStore.getTransactions()
+			]);
+
+			if (accounts.length > 0) {
+				// Calculate total balance from accounts
+				const totalBalance = accounts
+					.filter(a => a.is_active)
+					.reduce((sum, a) => sum + (a.balance || 0), 0);
+
+				// Calculate monthly income/expenses from transactions
+				const now = new Date();
+				const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+				const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+				const monthlyTransactions = transactions.filter(t => {
+					const txDate = new Date(t.date);
+					return txDate >= monthStart && txDate <= monthEnd;
+				});
+
+				const monthlyIncome = monthlyTransactions
+					.filter(t => t.amount > 0)
+					.reduce((sum, t) => sum + t.amount, 0);
+
+				const monthlyExpenses = Math.abs(
+					monthlyTransactions
+						.filter(t => t.amount < 0)
+						.reduce((sum, t) => sum + t.amount, 0)
+				);
+
+				stats = {
+					totalBalance,
+					monthlyIncome,
+					monthlyExpenses,
+					accountsCount: accounts.filter(a => a.is_active).length
+				};
+
+				toast.info('Showing cached data. Some info may be outdated.');
+			}
+		} catch (e) {
+			console.error('Failed to load offline dashboard data:', e);
 		}
 	}
 

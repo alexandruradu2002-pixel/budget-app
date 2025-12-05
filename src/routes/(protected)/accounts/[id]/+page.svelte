@@ -3,6 +3,7 @@
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, FloatingActionButton } from '$lib/components';
 	import { formatDate, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
+	import { offlineStore, toast } from '$lib/stores';
 
 	let accountId = $derived(Number($page.params.id));
 	
@@ -39,6 +40,26 @@
 	async function loadData() {
 		loading = true;
 		try {
+			// If offline, load from IndexedDB
+			if (!offlineStore.isOnline) {
+				const [offlineAccounts, offlineTx, offlineCats] = await Promise.all([
+					offlineStore.getAccounts(),
+					offlineStore.getTransactions(accountId),
+					offlineStore.getCategories()
+				]);
+				
+				accounts = offlineAccounts;
+				account = accounts.find((a: Account) => a.id === accountId) || null;
+				transactions = offlineTx;
+				categories = offlineCats;
+				
+				if (accounts.length > 0) {
+					toast.info('Showing cached data.');
+				}
+				loading = false;
+				return;
+			}
+
 			const [accRes, txRes, catRes] = await Promise.all([
 				fetch('/api/accounts?includeInactive=true'),
 				fetch(`/api/transactions?accountId=${accountId}`),
@@ -54,6 +75,25 @@
 			if (catRes.ok) categories = (await catRes.json()).categories;
 		} catch (error) {
 			console.error('Failed to load data:', error);
+			// Fallback to offline data
+			try {
+				const [offlineAccounts, offlineTx, offlineCats] = await Promise.all([
+					offlineStore.getAccounts(),
+					offlineStore.getTransactions(accountId),
+					offlineStore.getCategories()
+				]);
+				
+				accounts = offlineAccounts;
+				account = accounts.find((a: Account) => a.id === accountId) || null;
+				transactions = offlineTx;
+				categories = offlineCats;
+				
+				if (accounts.length > 0) {
+					toast.info('Showing cached data.');
+				}
+			} catch {
+				// Ignore offline fallback errors
+			}
 		} finally {
 			loading = false;
 		}
@@ -70,18 +110,55 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(payload)
 			});
-			if (res.ok) await loadData();
+			if (res.ok) {
+				await loadData();
+			} else if (!offlineStore.isOnline) {
+				// Offline - use offline store
+				const result = payload.id 
+					? await offlineStore.updateTransaction(payload.id, payload)
+					: await offlineStore.createTransaction(payload);
+				
+				if (result.success) {
+					toast.success('Saved offline. Will sync when online.');
+					await loadData();
+				}
+			}
 		} catch (error) {
 			console.error('Failed to save transaction:', error);
+			if (!offlineStore.isOnline) {
+				const result = payload.id 
+					? await offlineStore.updateTransaction(payload.id, payload)
+					: await offlineStore.createTransaction(payload);
+				
+				if (result.success) {
+					toast.success('Saved offline. Will sync when online.');
+					await loadData();
+				}
+			}
 		}
 	}
 
 	async function handleDeleteTransaction(id: number) {
 		try {
 			const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
-			if (res.ok) await loadData();
+			if (res.ok) {
+				await loadData();
+			} else if (!offlineStore.isOnline) {
+				const result = await offlineStore.deleteTransaction(id);
+				if (result.success) {
+					toast.success('Deleted offline. Will sync when online.');
+					await loadData();
+				}
+			}
 		} catch (error) {
 			console.error('Failed to delete transaction:', error);
+			if (!offlineStore.isOnline) {
+				const result = await offlineStore.deleteTransaction(id);
+				if (result.success) {
+					toast.success('Deleted offline. Will sync when online.');
+					await loadData();
+				}
+			}
 		}
 	}
 

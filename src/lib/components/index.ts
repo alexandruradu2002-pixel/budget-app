@@ -12,6 +12,7 @@ export { default as Alert } from './ui/Alert.svelte';
 export { default as WorkInProgress } from './ui/WorkInProgress.svelte';
 export { default as Calculator } from './ui/Calculator.svelte';
 export { default as DatePicker } from './ui/DatePicker.svelte';
+export { default as OfflineIndicator } from './ui/OfflineIndicator.svelte';
 
 // Feature Components
 export { default as TransactionModal } from './TransactionModal.svelte';

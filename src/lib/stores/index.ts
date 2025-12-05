@@ -4,3 +4,4 @@ export { userStore } from './user.svelte';
 export { currencyStore } from './currency.svelte';
 export { themeStore, THEMES, type ThemeId, type Theme } from './theme.svelte';
 export { cacheStore, type Payee, type CategoryGroup } from './cache.svelte';
+export { offlineStore } from './offline.svelte';

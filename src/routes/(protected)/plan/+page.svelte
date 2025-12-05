@@ -4,7 +4,7 @@
 	import type { CurrencyValue } from '$lib/constants';
 	import { TransactionModal, LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
 	import { formatCurrency, formatMonthYearShort } from '$lib/utils/format';
-	import { currencyStore } from '$lib/stores';
+	import { currencyStore, offlineStore, toast } from '$lib/stores';
 
 	// Constants
 	const UNCATEGORIZED = 'Uncategorized';
@@ -334,6 +334,36 @@
 		} catch (e) {
 			console.error('Failed to load categories:', e);
 			error = e instanceof Error ? e.message : 'Failed to load categories';
+			
+			// Try offline fallback
+			if (!offlineStore.isOnline) {
+				try {
+					const [offlineCategories, offlineTransactions, offlineAccounts, offlineGroups] = await Promise.all([
+						offlineStore.getCategories(),
+						offlineStore.getTransactions(),
+						offlineStore.getAccounts(),
+						offlineStore.getCategoryGroups()
+					]);
+
+					if (offlineCategories.length > 0) {
+						categories = offlineCategories;
+						transactions = offlineTransactions;
+						accounts = offlineAccounts;
+						
+						// Build account currency map
+						const currencyMap = new Map<number, CurrencyValue>();
+						for (const acc of accounts) {
+							currencyMap.set(acc.id, (acc.currency as CurrencyValue) || 'RON');
+						}
+						accountCurrencies = currencyMap;
+						
+						toast.info('Showing cached plan data.');
+						error = null;
+					}
+				} catch {
+					// Ignore offline fallback errors
+				}
+			}
 		} finally {
 			loading = false;
 		}

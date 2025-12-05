@@ -3,7 +3,7 @@
 // Provides instant loading from localStorage while fetching fresh data
 // ============================================
 
-import type { Account, Category } from '$lib/types';
+import type { Account, Category, CategoryGroup } from '$lib/types';
 
 // Cache configuration
 const CACHE_PREFIX = 'budget_cache_';
@@ -21,13 +21,8 @@ export interface Payee {
 	use_count?: number;
 }
 
-// Category Group type
-export interface CategoryGroup {
-	id: number;
-	name: string;
-	color: string;
-	sort_order: number;
-}
+// Re-export CategoryGroup from types for convenience
+export type { CategoryGroup };
 
 // Cache entry structure
 interface CacheEntry<T> {
