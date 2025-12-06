@@ -2,13 +2,14 @@
 	import './layout.css';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { themeStore } from '$lib/stores';
+	import { themeStore, keyboardStore } from '$lib/stores';
 	
 	let { children } = $props();
 
 	onMount(() => {
-		// Initialize theme from localStorage
+		// Initialize stores from localStorage
 		themeStore.init();
+		keyboardStore.init();
 		
 		if (browser && 'serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/sw.js')

@@ -8,6 +8,7 @@
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
 	import { getCurrencySymbol } from '$lib/utils/format';
+	import { keyboardStore } from '$lib/stores';
 	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
@@ -892,7 +893,7 @@
 
 			<!-- Calculator Keyboard (always visible) -->
 			<div class="calculator">
-				<div class="calc-grid">
+				<div class="calc-grid" style="--calc-btn-height: {keyboardStore.buttonHeight}px;">
 					<!-- Row 1 -->
 					<button type="button" onclick={() => calcInput('7')} class="calc-btn number">7</button>
 					<button type="button" onclick={() => calcInput('8')} class="calc-btn number">8</button>
@@ -1374,7 +1375,7 @@
 	}
 
 	.calc-btn {
-		height: 44px;
+		height: var(--calc-btn-height, 44px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1382,6 +1383,7 @@
 		border-radius: 10px;
 		font-size: 18px;
 		font-weight: 500;
+		transition: height 0.15s ease;
 	}
 
 	.calc-btn.span-2 {

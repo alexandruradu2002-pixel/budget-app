@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, PayeeSettings, Button, ThemeSettings } from '$lib/components';
+	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, PayeeSettings, Button, ThemeSettings, KeyboardSettings } from '$lib/components';
 	import { toast } from '$lib/stores';
 	import { goto } from '$app/navigation';
 	
@@ -108,6 +108,9 @@
 	<div class="settings-content">
 		<!-- Theme Settings Section -->
 		<ThemeSettings />
+
+		<!-- Keyboard Size Settings -->
+		<KeyboardSettings />
 
 		<!-- Currency Settings Section -->
 		<CurrencySettings />
