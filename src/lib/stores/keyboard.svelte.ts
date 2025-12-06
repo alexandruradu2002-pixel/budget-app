@@ -2,7 +2,7 @@
 // Keyboard Size Store - Manage calculator keyboard size
 // ============================================
 
-export type KeyboardSize = 1 | 2 | 3 | 4 | 5;
+export type KeyboardSize = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface KeyboardSizeOption {
 	value: KeyboardSize;
@@ -15,7 +15,9 @@ export const KEYBOARD_SIZES: KeyboardSizeOption[] = [
 	{ value: 2, label: 'S', height: 40 },
 	{ value: 3, label: 'M', height: 44 },
 	{ value: 4, label: 'L', height: 52 },
-	{ value: 5, label: 'XL', height: 60 }
+	{ value: 5, label: 'XL', height: 60 },
+	{ value: 6, label: '2XL', height: 68 },
+	{ value: 7, label: '3XL', height: 76 }
 ];
 
 const STORAGE_KEY = 'budget-app-keyboard-size';
@@ -32,7 +34,7 @@ function createKeyboardStore() {
 		const stored = localStorage.getItem(STORAGE_KEY);
 		if (stored) {
 			const parsed = parseInt(stored, 10);
-			if (parsed >= 1 && parsed <= 5) {
+			if (parsed >= 1 && parsed <= 7) {
 				currentSize = parsed as KeyboardSize;
 			}
 		}

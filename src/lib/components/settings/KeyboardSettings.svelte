@@ -32,7 +32,7 @@
 			<input
 				type="range"
 				min="1"
-				max="5"
+				max="7"
 				step="1"
 				value={keyboardStore.current}
 				oninput={(e) => selectSize(parseInt(e.currentTarget.value) as KeyboardSize)}
