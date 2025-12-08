@@ -147,26 +147,34 @@
 
 	// Fetch location and auto-complete when modal opens for new transaction
 	async function fetchLocationAndAutoComplete() {
+		console.log('[Location] Starting location detection...');
+		
 		if (!isGeolocationSupported()) {
+			console.warn('[Location] Geolocation not supported in this browser');
 			locationStatus = 'error';
 			return;
 		}
 
 		locationStatus = 'loading';
+		console.log('[Location] Getting current position...');
 		
 		const posResult = await getCurrentPosition();
 		if (!posResult.success) {
+			console.warn('[Location] Failed to get position:', posResult.error);
 			locationStatus = 'error';
 			return;
 		}
 
+		console.log('[Location] Position obtained:', posResult.position.latitude, posResult.position.longitude);
 		currentPosition = posResult.position;
 		
+		console.log('[Location] Fetching suggestions from API...');
 		const suggestions = await getLocationSuggestions(
 			posResult.position.latitude,
 			posResult.position.longitude
 		);
-
+		
+		console.log('[Location] Suggestions received:', suggestions);
 		locationStatus = 'success';
 
 		// Auto-apply best suggestion immediately if there's any match
@@ -689,6 +697,14 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 				</svg>
 				<span>Detectare locație...</span>
+			</div>
+		{:else if !editingTransaction && locationStatus === 'error'}
+			<div class="location-banner error">
+				<svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+					<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+				</svg>
+				<span>Locația nu este disponibilă</span>
 			</div>
 		{:else if !editingTransaction && appliedLocationSuggestion}
 			<div class="location-banner applied">
@@ -1552,6 +1568,12 @@
 	.location-banner.applied {
 		background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
 		color: var(--color-success);
+	}
+
+	.location-banner.error {
+		background-color: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
+		color: var(--color-text-muted);
+		font-size: 0.8rem;
 	}
 
 	.location-icon {

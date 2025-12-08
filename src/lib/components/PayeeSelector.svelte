@@ -144,11 +144,13 @@
 	async function loadNearMePayees() {
 		nearMeLoading = true;
 		locationError = null;
+		console.log('[NearMe] Loading nearby payees...');
 		
 		try {
 			const posResult = await getCurrentPosition({ timeout: 5000, maximumAge: 30000 });
 			
 			if (!posResult.success) {
+				console.warn('[NearMe] Failed to get position:', posResult.error);
 				locationError = posResult.error.code === 'PERMISSION_DENIED' 
 					? 'Location access denied' 
 					: 'Could not get location';
@@ -156,15 +158,18 @@
 				return;
 			}
 			
+			console.log('[NearMe] Position:', posResult.position.latitude, posResult.position.longitude);
 			const suggestions = await getLocationSuggestions(
 				posResult.position.latitude,
 				posResult.position.longitude
 			);
 			
+			console.log('[NearMe] Suggestions received:', suggestions);
 			// Filter to only suggestions with payee names
 			nearMePayees = suggestions.filter(s => s.payee);
+			console.log('[NearMe] Filtered payees:', nearMePayees);
 		} catch (e) {
-			console.error('Error loading near me payees:', e);
+			console.error('[NearMe] Error loading near me payees:', e);
 			locationError = 'Could not load nearby payees';
 			nearMePayees = [];
 		} finally {
@@ -404,7 +409,7 @@
 				{/if}
 
 				<!-- Near Me Section -->
-				{#if !searchQuery && (nearMePayees.length > 0 || nearMeLoading)}
+				{#if !searchQuery && (nearMePayees.length > 0 || nearMeLoading || locationError)}
 					<button class="section-header" onclick={() => nearMeExpanded = !nearMeExpanded}>
 						<svg class="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -413,6 +418,8 @@
 						<span class="section-title">Near Me</span>
 						{#if nearMeLoading}
 							<div class="section-spinner"></div>
+						{:else if locationError}
+							<span class="section-error">!</span>
 						{:else}
 							<span class="section-count">{nearMePayees.length}</span>
 						{/if}
@@ -426,6 +433,14 @@
 								<div class="near-me-loading">
 									<div class="spinner small"></div>
 									<span>Getting your location...</span>
+								</div>
+							{:else if locationError}
+								<div class="near-me-error">
+									<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+										<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+									</svg>
+									<span>{locationError}</span>
 								</div>
 							{:else}
 								{#each nearMePayees as suggestion (suggestion.payee)}
@@ -456,6 +471,11 @@
 										{/if}
 									</button>
 								{/each}
+								{#if nearMePayees.length === 0}
+									<div class="near-me-empty">
+										<span>No saved locations nearby</span>
+									</div>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -868,6 +888,44 @@
 		padding: 16px;
 		color: var(--color-text-muted);
 		font-size: 14px;
+	}
+
+	.near-me-error {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 16px;
+		color: var(--color-text-muted);
+		font-size: 14px;
+	}
+
+	.near-me-error svg {
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
+	}
+
+	.near-me-empty {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		color: var(--color-text-muted);
+		font-size: 14px;
+		font-style: italic;
+	}
+
+	.section-error {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background-color: var(--color-warning);
+		color: white;
+		font-size: 12px;
+		font-weight: bold;
 	}
 
 	.spinner.small {
