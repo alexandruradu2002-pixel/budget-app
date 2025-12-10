@@ -1,7 +1,7 @@
 // Service Worker for Budget App PWA
-// Version 5 - Fixed cold start black screen issue
-const CACHE_NAME = 'budget-app-v5';
-const API_CACHE_NAME = 'budget-app-api-v3';
+// Version 6 - Fixed iOS background resume black screen issue
+const CACHE_NAME = 'budget-app-v6';
+const API_CACHE_NAME = 'budget-app-api-v4';
 const OFFLINE_PAGE = '/offline.html';
 
 // Max age for cached HTML pages (prevents stale hydration issues)
@@ -434,5 +434,15 @@ self.addEventListener('message', (event) => {
 		caches.open(API_CACHE_NAME).then(cache => {
 			cache.delete(url);
 		});
+	}
+	
+	// iOS PWA resume fix - check if client is alive
+	if (event.data.type === 'PING') {
+		event.source?.postMessage({ type: 'PONG' });
+	}
+	
+	// Force reload request from app when it detects stuck state
+	if (event.data.type === 'FORCE_REFRESH') {
+		event.source?.postMessage({ type: 'RELOAD' });
 	}
 });

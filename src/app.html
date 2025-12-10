@@ -70,10 +70,37 @@
 					setTimeout(hideLoading, 100);
 				});
 			}
-			// Strategy 2: Fallback - hide after max 3 seconds (cold start timeout)
-			setTimeout(hideLoading, 3000);
+			// Strategy 2: Fallback - hide after max 5 seconds (cold start timeout)
+			setTimeout(hideLoading, 5000);
 			// Strategy 3: Hide when SvelteKit hydration completes
 			window.addEventListener('sveltekit:start', hideLoading);
+			
+			// Strategy 4: Handle iOS app resume from background
+			// iOS Safari can freeze the page and show black screen on resume
+			document.addEventListener('visibilitychange', function() {
+				if (document.visibilityState === 'visible') {
+					// Force hide loading (might be stuck from previous state)
+					hideLoading();
+					// Check if app content is visible, if not, reload
+					setTimeout(function() {
+						var appContent = document.querySelector('.app-container, main, [data-sveltekit-hydrate]');
+						var body = document.body;
+						// If body is empty or only has loading element, something went wrong
+						if (!appContent && body.children.length < 2) {
+							console.log('[App] Detected empty state on resume, reloading...');
+							window.location.reload();
+						}
+					}, 500);
+				}
+			});
+			
+			// Strategy 5: Detect page unload and reload issues (iOS PWA fix)
+			window.addEventListener('pageshow', function(event) {
+				if (event.persisted) {
+					// Page was restored from bfcache, hide loading and check state
+					hideLoading();
+				}
+			});
 		</script>
 	</body>
 </html>
