@@ -72,6 +72,7 @@
 	let currentPosition = $state<GeolocationPosition | null>(null);
 	let locationStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
 	let appliedLocationSuggestion = $state(false);
+	let appliedFields = $state<string[]>([]); // Track which fields were auto-filled
 
 	// Delete confirmation dialog state
 	let showDeleteConfirm = $state(false);
@@ -147,58 +148,58 @@
 
 	// Fetch location and auto-complete when modal opens for new transaction
 	async function fetchLocationAndAutoComplete() {
-		console.log('[Location] Starting location detection...');
-		
 		if (!isGeolocationSupported()) {
-			console.warn('[Location] Geolocation not supported in this browser');
 			locationStatus = 'error';
 			return;
 		}
 
 		locationStatus = 'loading';
-		console.log('[Location] Getting current position...');
 		
 		const posResult = await getCurrentPosition();
 		if (!posResult.success) {
-			console.warn('[Location] Failed to get position:', posResult.error);
 			locationStatus = 'error';
 			return;
 		}
 
-		console.log('[Location] Position obtained:', posResult.position.latitude, posResult.position.longitude);
 		currentPosition = posResult.position;
 		
-		console.log('[Location] Fetching suggestions from API...');
 		const suggestions = await getLocationSuggestions(
 			posResult.position.latitude,
 			posResult.position.longitude
 		);
 		
-		console.log('[Location] Suggestions received:', suggestions);
 		locationStatus = 'success';
 
 		// Auto-apply best suggestion immediately if there's any match
-		if (suggestions.length > 0 && !appliedLocationSuggestion) {
+		if (suggestions.length > 0) {
 			const best = suggestions[0];
 			
-			// Apply payee
-			if (best.payee) {
-				formData.description = best.payee;
+			if (!appliedLocationSuggestion) {
+				const applied: string[] = [];
+				
+				// Apply payee
+				if (best.payee) {
+					formData.description = best.payee;
+					applied.push('payee');
+				}
+				
+				// Apply category
+				if (best.category_id) {
+					formData.category_id = best.category_id;
+					selectedCategoryName = best.category_name || '';
+					applied.push('category');
+				}
+				
+				// Apply account
+				if (best.account_id) {
+					formData.account_id = best.account_id;
+					selectedAccountName = best.account_name || '';
+					applied.push('account');
+				}
+				
+				appliedFields = applied;
+				appliedLocationSuggestion = applied.length > 0;
 			}
-			
-			// Apply category
-			if (best.category_id) {
-				formData.category_id = best.category_id;
-				selectedCategoryName = best.category_name || '';
-			}
-			
-			// Apply account
-			if (best.account_id) {
-				formData.account_id = best.account_id;
-				selectedAccountName = best.account_name || '';
-			}
-			
-			appliedLocationSuggestion = true;
 		}
 	}
 
@@ -231,11 +232,17 @@
 	}
 
 	// Initialize form when modal opens or editingTransaction changes
+	let lastShowState = $state(false);
+	
 	$effect(() => {
-		if (show) {
+		// Only run initialization when show changes from false to true
+		if (show && !lastShowState) {
+			lastShowState = true;
+			
 			// Reset location state
 			locationStatus = 'idle';
 			appliedLocationSuggestion = false;
+			appliedFields = [];
 			currentPosition = null;
 
 			// Reset transfer state
@@ -305,6 +312,8 @@
 				// Fetch location and auto-complete for new transactions
 				fetchLocationAndAutoComplete();
 			}
+		} else if (!show && lastShowState) {
+			lastShowState = false;
 		}
 	});
 
@@ -625,20 +634,19 @@
 			payload.id = editingTransaction.id;
 		}
 
-		console.log('Saving transaction with payload:', payload);
 		await onSave(payload);
 
 		// Save learned location if we have position data (for new transactions only, not for transfers)
 		if (!editingTransaction && !isTransfer && currentPosition && (formData.description || formData.category_id || formData.account_id)) {
-			saveLearnedLocation({
+			const locationData = {
 				latitude: currentPosition.latitude,
 				longitude: currentPosition.longitude,
 				payee: formData.description || undefined,
 				category_id: formData.category_id && formData.category_id > 0 ? formData.category_id : undefined,
 				account_id: formData.account_id && formData.account_id > 0 ? formData.account_id : undefined
-			}).catch(err => {
+			};
+			saveLearnedLocation(locationData).catch(() => {
 				// Silent fail - location learning is not critical
-				console.warn('Failed to save learned location:', err);
 			});
 		}
 
@@ -690,31 +698,6 @@
 			<div class="header-spacer"></div>
 		</header>
 
-		<!-- Location-based auto-complete banner -->
-		{#if !editingTransaction && locationStatus === 'loading'}
-			<div class="location-banner loading">
-				<svg class="location-icon spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-				</svg>
-				<span>Detectare locație...</span>
-			</div>
-		{:else if !editingTransaction && locationStatus === 'error'}
-			<div class="location-banner error">
-				<svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-				</svg>
-				<span>Locația nu este disponibilă</span>
-			</div>
-		{:else if !editingTransaction && appliedLocationSuggestion}
-			<div class="location-banner applied">
-				<svg class="location-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-				</svg>
-				<span>Completat automat din locație</span>
-			</div>
-		{/if}
-
 		<!-- Scrollable Content -->
 		<div class="modal-content">
 			<!-- Amount Display -->
@@ -752,6 +735,12 @@
 							{formData.description || 'Enter payee name'}
 						</span>
 					</div>
+					{#if appliedFields.includes('payee')}
+						<svg class="location-indicator" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+						</svg>
+					{/if}
 					<svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 					</svg>
@@ -1312,6 +1301,14 @@
 		flex-shrink: 0;
 	}
 
+	.location-indicator {
+		width: 18px;
+		height: 18px;
+		color: var(--color-success);
+		flex-shrink: 0;
+		margin-right: 4px;
+	}
+
 	/* Bottom Section (sticky) */
 	.bottom-section {
 		flex-shrink: 0;
@@ -1550,45 +1547,10 @@
 		border-color: var(--color-primary);
 	}
 
-	/* Location-based auto-complete */
-	.location-banner {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 10px 16px;
-		font-size: 13px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.location-banner.loading {
-		background-color: var(--color-bg-secondary);
-		color: var(--color-text-muted);
-	}
-
-	.location-banner.applied {
-		background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
+	/* Location hint icon */
+	.location-hint-icon {
 		color: var(--color-success);
-	}
-
-	.location-banner.error {
-		background-color: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
-		color: var(--color-text-muted);
-		font-size: 0.8rem;
-	}
-
-	.location-icon {
-		width: 16px;
-		height: 16px;
 		flex-shrink: 0;
-	}
-
-	.location-icon.spin {
-		animation: spin 1s linear infinite;
-	}
-
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
 	}
 
 	/* Delete Confirmation Dialog */

@@ -144,13 +144,11 @@
 	async function loadNearMePayees() {
 		nearMeLoading = true;
 		locationError = null;
-		console.log('[NearMe] Loading nearby payees...');
 		
 		try {
 			const posResult = await getCurrentPosition({ timeout: 5000, maximumAge: 30000 });
 			
 			if (!posResult.success) {
-				console.warn('[NearMe] Failed to get position:', posResult.error);
 				locationError = posResult.error.code === 'PERMISSION_DENIED' 
 					? 'Location access denied' 
 					: 'Could not get location';
@@ -158,18 +156,14 @@
 				return;
 			}
 			
-			console.log('[NearMe] Position:', posResult.position.latitude, posResult.position.longitude);
 			const suggestions = await getLocationSuggestions(
 				posResult.position.latitude,
 				posResult.position.longitude
 			);
 			
-			console.log('[NearMe] Suggestions received:', suggestions);
 			// Filter to only suggestions with payee names
 			nearMePayees = suggestions.filter(s => s.payee);
-			console.log('[NearMe] Filtered payees:', nearMePayees);
 		} catch (e) {
-			console.error('[NearMe] Error loading near me payees:', e);
 			locationError = 'Could not load nearby payees';
 			nearMePayees = [];
 		} finally {

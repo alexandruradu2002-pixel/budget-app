@@ -104,19 +104,15 @@ export async function getLocationSuggestions(
 	longitude: number
 ): Promise<LocationSuggestion[]> {
 	try {
-		console.log('[Geolocation] Fetching suggestions for:', latitude, longitude);
 		const response = await fetch(`/api/locations?lat=${latitude}&lng=${longitude}`);
 		
 		if (!response.ok) {
-			console.warn('[Geolocation] Failed to fetch location suggestions:', response.status);
 			return [];
 		}
 
 		const data = await response.json();
-		console.log('[Geolocation] API response:', data);
 		return data.suggestions || [];
 	} catch (error) {
-		console.warn('[Geolocation] Error fetching location suggestions:', error);
 		return [];
 	}
 }
@@ -133,7 +129,6 @@ export async function saveLearnedLocation(location: {
 	account_id?: number;
 }): Promise<{ success: boolean; id?: number; message?: string }> {
 	try {
-		console.log('[Geolocation] Saving learned location:', location);
 		const response = await fetch('/api/locations', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -142,15 +137,12 @@ export async function saveLearnedLocation(location: {
 
 		if (!response.ok) {
 			const error = await response.json();
-			console.warn('[Geolocation] Failed to save location:', error);
 			return { success: false, message: error.message || 'Failed to save location' };
 		}
 
 		const data = await response.json();
-		console.log('[Geolocation] Location saved:', data);
 		return { success: true, id: data.id, message: data.message };
 	} catch (error) {
-		console.warn('[Geolocation] Error saving learned location:', error);
 		return { success: false, message: 'Network error' };
 	}
 }

@@ -276,10 +276,10 @@
 								{/if}
 							</div>
 							<div class="transaction-amount-section">
-								<div class="amount-with-status">
-									<span class="transaction-amount" class:positive={tx.amount >= 0}>
-										{formatAccountAmount(tx.amount)}
-									</span>
+							<div class="amount-with-status">
+								<span class="transaction-amount" class:positive={tx.amount >= 0} class:negative={tx.amount < 0}>
+									{formatAccountAmount(tx.amount)}
+								</span>
 									<span class="status-dot">
 										<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
 											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -556,6 +556,10 @@
 
 	.transaction-amount.positive {
 		color: var(--color-success);
+	}
+
+	.transaction-amount.negative {
+		color: var(--color-danger);
 	}
 
 	.status-dot {

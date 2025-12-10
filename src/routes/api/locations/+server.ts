@@ -53,28 +53,29 @@ export const GET: RequestHandler = async (event) => {
 	}
 	
 	try {
-		console.log(`[Locations API] GET request for user ${user.userId} at (${latitude}, ${longitude})`);
-		
 		// Get all learned locations for this user
 		// We'll calculate distance on the server side for accuracy
 		const result = await db.execute({
 			sql: `
 				SELECT 
 					ll.*,
+					p.name as payee_name,
 					c.name as category_name,
 					c.color as category_color,
 					a.name as account_name
 				FROM learned_locations ll
-				LEFT JOIN categories c ON ll.category_id = c.id
-				LEFT JOIN accounts a ON ll.account_id = a.id
+				LEFT JOIN payees p ON ll.payee = p.name AND p.user_id = ll.user_id
+				LEFT JOIN categories c ON ll.category_id = c.id AND c.user_id = ll.user_id
+				LEFT JOIN accounts a ON ll.account_id = a.id AND a.user_id = ll.user_id
 				WHERE ll.user_id = ?
+					AND (ll.payee IS NULL OR p.id IS NOT NULL)
+					AND (ll.category_id IS NULL OR c.id IS NOT NULL)
+					AND (ll.account_id IS NULL OR a.id IS NOT NULL)
 				ORDER BY ll.times_used DESC, ll.last_used DESC
 				LIMIT 100
 			`,
 			args: [user.userId] as InValue[]
 		});
-		
-		console.log(`[Locations API] Found ${result.rows.length} saved locations for user`);
 		
 		// Filter by distance and calculate confidence
 		const maxSearchRadius = 500; // meters - search within 500m (increased for GPS accuracy)
@@ -109,11 +110,6 @@ export const GET: RequestHandler = async (event) => {
 			.sort((a, b) => b.confidence - a.confidence)
 			.slice(0, 5); // Return top 5 suggestions
 		
-		console.log(`[Locations API] Returning ${suggestions.length} suggestions within ${maxSearchRadius}m`);
-		if (suggestions.length > 0) {
-			console.log('[Locations API] Best suggestion:', suggestions[0]);
-		}
-		
 		return successResponse({ suggestions });
 	} catch (err) {
 		return handleDbError(err);
@@ -125,10 +121,7 @@ export const POST: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const data = await parseBody(event, learnedLocationSchema);
 	
-	console.log(`[Locations API] POST request from user ${user.userId}:`, data);
-	
 	if (!data.payee && !data.category_id && !data.account_id) {
-		console.warn('[Locations API] Rejected: No payee, category_id, or account_id provided');
 		throw error(400, 'At least payee, category_id or account_id is required');
 	}
 	
@@ -147,7 +140,9 @@ export const POST: RequestHandler = async (event) => {
 		// Find if there's a matching location within the radius
 		const searchRadius = data.radius ?? 100; // Increased default from 50m to 100m
 		let matchingLocationId: number | null = null;
-		console.log(`[Locations API] Searching for existing location within ${searchRadius}m among ${existing.rows.length} locations`);
+		let closestLocationId: number | null = null;
+		let closestDistance = Infinity;
+		
 		for (const row of existing.rows) {
 			const distance = calculateDistance(
 				data.latitude,
@@ -155,6 +150,12 @@ export const POST: RequestHandler = async (event) => {
 				row.latitude as number,
 				row.longitude as number
 			);
+			
+			// Track closest location within radius for potential update
+			if (distance <= searchRadius && distance < closestDistance) {
+				closestDistance = distance;
+				closestLocationId = row.id as number;
+			}
 			
 			// Check if same payee, category, or account exists nearby
 			if (distance <= searchRadius) {
@@ -166,10 +167,17 @@ export const POST: RequestHandler = async (event) => {
 				
 				if (fullRecord.rows.length > 0) {
 					const record = fullRecord.rows[0];
-					// Match if same payee OR same category OR same account
-					if ((data.payee && record.payee === data.payee) ||
-						(data.category_id && record.category_id === data.category_id) ||
-						(data.account_id && record.account_id === data.account_id)) {
+					// Match if:
+					// 1. Same payee (both non-null)
+					// 2. Same category_id 
+					// 3. Same account_id
+					// 4. Record has null payee but same category or account (update it with new payee)
+					const samePayee = data.payee && record.payee && record.payee === data.payee;
+					const sameCategory = data.category_id && record.category_id === data.category_id;
+					const sameAccount = data.account_id && record.account_id === data.account_id;
+					const canUpdatePayee = !record.payee && data.payee && (sameCategory || sameAccount);
+					
+					if (samePayee || sameCategory || sameAccount || canUpdatePayee) {
 						matchingLocationId = row.id as number;
 						break;
 					}
@@ -177,24 +185,35 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 		
+		// If no exact match but there's a close location, use it for update
+		if (!matchingLocationId && closestLocationId) {
+			matchingLocationId = closestLocationId;
+		}
+		
 		if (matchingLocationId) {
 			// Update existing location
-			console.log(`[Locations API] Updating existing location ID ${matchingLocationId}`);
+			// Build dynamic update - always update payee if we have one, otherwise keep existing
+			// For category and account, use COALESCE to keep existing if new is null
 			await db.execute({
 				sql: `
 					UPDATE learned_locations 
 					SET 
 						times_used = times_used + 1,
 						last_used = CURRENT_TIMESTAMP,
-						payee = COALESCE(?, payee),
+						payee = CASE WHEN ? IS NOT NULL THEN ? ELSE payee END,
 						category_id = COALESCE(?, category_id),
 						account_id = COALESCE(?, account_id)
 					WHERE id = ?
 				`,
-				args: [data.payee || null, data.category_id || null, data.account_id || null, matchingLocationId] as InValue[]
+				args: [
+					data.payee || null,  // For the IS NOT NULL check
+					data.payee || null,  // For the actual value
+					data.category_id || null, 
+					data.account_id || null, 
+					matchingLocationId
+				] as InValue[]
 			});
 			
-			console.log(`[Locations API] Location updated successfully`);
 			return successResponse({ 
 				id: matchingLocationId, 
 				message: 'Location updated',
@@ -202,7 +221,6 @@ export const POST: RequestHandler = async (event) => {
 			});
 		} else {
 			// Create new learned location
-			console.log(`[Locations API] Creating new location for payee: "${data.payee}"`);
 			const result = await db.execute({
 				sql: `
 					INSERT INTO learned_locations 
@@ -220,14 +238,12 @@ export const POST: RequestHandler = async (event) => {
 				] as InValue[]
 			});
 			
-			console.log(`[Locations API] New location created with ID ${result.lastInsertRowid}`);
 			return createdResponse({ 
 				id: Number(result.lastInsertRowid),
 				message: 'Location learned' 
 			});
 		}
 	} catch (err) {
-		console.error('[Locations API] Error:', err);
 		return handleDbError(err);
 	}
 };
