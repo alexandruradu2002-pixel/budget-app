@@ -1547,12 +1547,6 @@
 		border-color: var(--color-primary);
 	}
 
-	/* Location hint icon */
-	.location-hint-icon {
-		color: var(--color-success);
-		flex-shrink: 0;
-	}
-
 	/* Delete Confirmation Dialog */
 	.delete-confirm-overlay {
 		position: fixed;
