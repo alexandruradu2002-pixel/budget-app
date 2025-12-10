@@ -898,7 +898,7 @@
 
 			<!-- Calculator Keyboard (always visible) -->
 			<div class="calculator">
-				<div class="calc-grid" style="--calc-btn-height: {keyboardStore.buttonHeight}px;">
+				<div class="calc-grid" style="--calc-btn-height: {keyboardStore.buttonHeight}px; --calc-font-size: {Math.round(keyboardStore.buttonHeight * 0.45)}px;">
 					<!-- Row 1 -->
 					<button type="button" onclick={() => calcInput('7')} class="calc-btn number">7</button>
 					<button type="button" onclick={() => calcInput('8')} class="calc-btn number">8</button>
@@ -1394,9 +1394,9 @@
 		justify-content: center;
 		border: none;
 		border-radius: 10px;
-		font-size: 18px;
+		font-size: var(--calc-font-size, 18px);
 		font-weight: 500;
-		transition: height 0.15s ease;
+		transition: height 0.15s ease, font-size 0.15s ease;
 	}
 
 	.calc-btn.span-2 {
