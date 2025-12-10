@@ -1,8 +1,11 @@
 // Service Worker for Budget App PWA
-// Version 4 - With aggressive offline support
-const CACHE_NAME = 'budget-app-v4';
-const API_CACHE_NAME = 'budget-app-api-v2';
+// Version 5 - Fixed cold start black screen issue
+const CACHE_NAME = 'budget-app-v5';
+const API_CACHE_NAME = 'budget-app-api-v3';
 const OFFLINE_PAGE = '/offline.html';
+
+// Max age for cached HTML pages (prevents stale hydration issues)
+const PAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 
 // Static resources to cache immediately on install
 const STATIC_RESOURCES = [
@@ -280,15 +283,22 @@ self.addEventListener('fetch', (event) => {
 async function handleNavigationRequest(request) {
 	const url = new URL(request.url);
 	
-	// Try network first
+	// ALWAYS try network first for navigation - prevents stale page issues on cold start
 	try {
 		const response = await fetch(request);
 		
-		// Cache successful page responses (including redirects that resolve)
+		// Cache successful page responses with timestamp
 		if (response.ok) {
 			const cache = await caches.open(CACHE_NAME);
-			// Clone before caching
-			cache.put(request, response.clone());
+			// Add timestamp header before caching
+			const headers = new Headers(response.headers);
+			headers.set('sw-page-cached-time', Date.now().toString());
+			const timestampedResponse = new Response(response.clone().body, {
+				status: response.status,
+				statusText: response.statusText,
+				headers
+			});
+			cache.put(request, timestampedResponse);
 		}
 		
 		return response;
@@ -298,11 +308,20 @@ async function handleNavigationRequest(request) {
 		// Network failed - we're offline
 		const cache = await caches.open(CACHE_NAME);
 		
-		// Try to return cached version of the page
+		// Try to return cached version of the page (if not too old)
 		const cachedResponse = await cache.match(request);
 		if (cachedResponse) {
-			console.log('[SW] Returning cached page:', url.pathname);
-			return cachedResponse;
+			// Check if cached page is not too old (prevents stale hydration)
+			const cachedTime = cachedResponse.headers.get('sw-page-cached-time');
+			const isExpired = cachedTime && (Date.now() - parseInt(cachedTime, 10) > PAGE_CACHE_MAX_AGE);
+			
+			if (!isExpired) {
+				console.log('[SW] Returning cached page:', url.pathname);
+				return cachedResponse;
+			} else {
+				console.log('[SW] Cached page expired, removing:', url.pathname);
+				await cache.delete(request);
+			}
 		}
 		
 		// Try to match just the pathname (without query params)

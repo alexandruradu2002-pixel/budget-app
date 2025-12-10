@@ -6,7 +6,21 @@
 	
 	let { children } = $props();
 
+	// Hide initial loading indicator
+	function hideAppLoading() {
+		if (browser) {
+			const loader = document.getElementById('app-loading');
+			if (loader) {
+				loader.classList.add('hidden');
+				setTimeout(() => loader.remove(), 200);
+			}
+		}
+	}
+
 	onMount(() => {
+		// Hide loading indicator immediately when component mounts
+		hideAppLoading();
+		
 		// Initialize stores from localStorage
 		themeStore.init();
 		keyboardStore.init();

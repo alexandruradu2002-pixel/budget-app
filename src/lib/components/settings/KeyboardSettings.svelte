@@ -57,7 +57,7 @@
 				{#each ['7', '8', '9'] as num}
 					<div 
 						class="preview-key" 
-						style="height: {keyboardStore.buttonHeight}px;"
+						style="height: {keyboardStore.buttonHeight}px; font-size: {Math.round(keyboardStore.buttonHeight * 0.45)}px;"
 					>
 						{num}
 					</div>
@@ -213,9 +213,8 @@
 		justify-content: center;
 		background-color: var(--color-bg-tertiary);
 		border-radius: 10px;
-		font-size: 18px;
 		font-weight: 500;
 		color: var(--color-text-primary);
-		transition: height 0.2s ease;
+		transition: height 0.2s ease, font-size 0.2s ease;
 	}
 </style>
