@@ -53,6 +53,8 @@ export const GET: RequestHandler = async (event) => {
 	}
 	
 	try {
+		console.log(`[Locations API] GET request for user ${user.userId} at (${latitude}, ${longitude})`);
+		
 		// Get all learned locations for this user
 		// We'll calculate distance on the server side for accuracy
 		const result = await db.execute({
@@ -72,8 +74,10 @@ export const GET: RequestHandler = async (event) => {
 			args: [user.userId] as InValue[]
 		});
 		
+		console.log(`[Locations API] Found ${result.rows.length} saved locations for user`);
+		
 		// Filter by distance and calculate confidence
-		const maxSearchRadius = 200; // meters - search within 200m
+		const maxSearchRadius = 500; // meters - search within 500m (increased for GPS accuracy)
 		const suggestions = result.rows
 			.map(row => {
 				const distance = calculateDistance(
@@ -105,6 +109,11 @@ export const GET: RequestHandler = async (event) => {
 			.sort((a, b) => b.confidence - a.confidence)
 			.slice(0, 5); // Return top 5 suggestions
 		
+		console.log(`[Locations API] Returning ${suggestions.length} suggestions within ${maxSearchRadius}m`);
+		if (suggestions.length > 0) {
+			console.log('[Locations API] Best suggestion:', suggestions[0]);
+		}
+		
 		return successResponse({ suggestions });
 	} catch (err) {
 		return handleDbError(err);
@@ -116,12 +125,15 @@ export const POST: RequestHandler = async (event) => {
 	const user = requireAuth(event);
 	const data = await parseBody(event, learnedLocationSchema);
 	
+	console.log(`[Locations API] POST request from user ${user.userId}:`, data);
+	
 	if (!data.payee && !data.category_id && !data.account_id) {
+		console.warn('[Locations API] Rejected: No payee, category_id, or account_id provided');
 		throw error(400, 'At least payee, category_id or account_id is required');
 	}
 	
 	try {
-		// Check if a similar location already exists (within 50m radius)
+		// Check if a similar location already exists (within 100m radius - increased for GPS accuracy)
 		const existing = await db.execute({
 			sql: `
 				SELECT id, latitude, longitude, times_used 
@@ -133,8 +145,9 @@ export const POST: RequestHandler = async (event) => {
 		});
 		
 		// Find if there's a matching location within the radius
-		const searchRadius = data.radius ?? 50;
+		const searchRadius = data.radius ?? 100; // Increased default from 50m to 100m
 		let matchingLocationId: number | null = null;
+		console.log(`[Locations API] Searching for existing location within ${searchRadius}m among ${existing.rows.length} locations`);
 		for (const row of existing.rows) {
 			const distance = calculateDistance(
 				data.latitude,
@@ -166,6 +179,7 @@ export const POST: RequestHandler = async (event) => {
 		
 		if (matchingLocationId) {
 			// Update existing location
+			console.log(`[Locations API] Updating existing location ID ${matchingLocationId}`);
 			await db.execute({
 				sql: `
 					UPDATE learned_locations 
@@ -180,6 +194,7 @@ export const POST: RequestHandler = async (event) => {
 				args: [data.payee || null, data.category_id || null, data.account_id || null, matchingLocationId] as InValue[]
 			});
 			
+			console.log(`[Locations API] Location updated successfully`);
 			return successResponse({ 
 				id: matchingLocationId, 
 				message: 'Location updated',
@@ -187,6 +202,7 @@ export const POST: RequestHandler = async (event) => {
 			});
 		} else {
 			// Create new learned location
+			console.log(`[Locations API] Creating new location for payee: "${data.payee}"`);
 			const result = await db.execute({
 				sql: `
 					INSERT INTO learned_locations 
@@ -204,12 +220,14 @@ export const POST: RequestHandler = async (event) => {
 				] as InValue[]
 			});
 			
+			console.log(`[Locations API] New location created with ID ${result.lastInsertRowid}`);
 			return createdResponse({ 
 				id: Number(result.lastInsertRowid),
 				message: 'Location learned' 
 			});
 		}
 	} catch (err) {
+		console.error('[Locations API] Error:', err);
 		return handleDbError(err);
 	}
 };
