@@ -11,12 +11,59 @@
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Budget" />
 		<meta name="mobile-web-app-capable" content="yes" />
+		<script>
+			// CRITICAL: Apply theme BEFORE any rendering to prevent black screen/flash
+			// This runs synchronously before anything else
+			(function() {
+				var THEME_BACKGROUNDS = {
+					'midnight-blue': '#0F172A',
+					'emerald-dark': '#0D1117',
+					'sunset-orange': '#18181B',
+					'royal-purple': '#1A1625',
+					'ocean-teal': '#0F1419',
+					'rose-pink': '#1A1018',
+					'cyber-neon': '#0A0A0F',
+					'coffee-brown': '#1C1410',
+					'arctic-blue': '#0C1929',
+					'dracula': '#282A36'
+				};
+				var THEME_PRIMARIES = {
+					'midnight-blue': '#3B82F6',
+					'emerald-dark': '#10B981',
+					'sunset-orange': '#F97316',
+					'royal-purple': '#8B5CF6',
+					'ocean-teal': '#14B8A6',
+					'rose-pink': '#EC4899',
+					'cyber-neon': '#00FF88',
+					'coffee-brown': '#D97706',
+					'arctic-blue': '#38BDF8',
+					'dracula': '#BD93F9'
+				};
+				var storedTheme = null;
+				try {
+					storedTheme = localStorage.getItem('budget-app-theme');
+				} catch(e) {}
+				var theme = storedTheme || 'midnight-blue';
+				var bgColor = THEME_BACKGROUNDS[theme] || '#0F172A';
+				var primaryColor = THEME_PRIMARIES[theme] || '#3B82F6';
+				
+				// Apply theme class immediately
+				document.documentElement.classList.add('theme-' + theme);
+				
+				// Inject critical CSS with correct colors
+				document.write('<style id="critical-theme-css">' +
+					'html, body { background-color: ' + bgColor + ' !important; }' +
+					'.app-loading { background: ' + bgColor + ' !important; }' +
+					'.app-loading-spinner { border-top-color: ' + primaryColor + ' !important; }' +
+				'</style>');
+			})();
+		</script>
 		<style>
 			/* Initial loading state - prevents black screen on cold start */
 			.app-loading {
 				position: fixed;
 				inset: 0;
-				background: #0F172A;
+				background: var(--color-bg-primary, #0F172A);
 				display: flex;
 				align-items: center;
 				justify-content: center;
@@ -31,7 +78,7 @@
 				width: 40px;
 				height: 40px;
 				border: 3px solid #334155;
-				border-top-color: #3B82F6;
+				border-top-color: var(--color-primary, #3B82F6);
 				border-radius: 50%;
 				animation: spin 0.8s linear infinite;
 			}
@@ -39,8 +86,8 @@
 				to { transform: rotate(360deg); }
 			}
 			/* Ensure body has background color immediately */
-			body {
-				background: #0F172A;
+			html, body {
+				background: var(--color-bg-primary, #0F172A);
 				margin: 0;
 			}
 		</style>

@@ -7,6 +7,31 @@
     <link rel="icon" href="/favicon.png">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#3B82F6">
+    <script>
+        // Apply saved theme immediately to prevent flash
+        (function() {
+            var THEME_VARS = {
+                'midnight-blue': { bg: '#0F172A', primary: '#3B82F6', secondary: '#1E293B', text: '#F8FAFC' },
+                'emerald-dark': { bg: '#0D1117', primary: '#10B981', secondary: '#161B22', text: '#F0FDF4' },
+                'sunset-orange': { bg: '#18181B', primary: '#F97316', secondary: '#27272A', text: '#FAFAFA' },
+                'royal-purple': { bg: '#1A1625', primary: '#8B5CF6', secondary: '#2D2640', text: '#FAF5FF' },
+                'ocean-teal': { bg: '#0F1419', primary: '#14B8A6', secondary: '#1A2332', text: '#F0FDFA' },
+                'rose-pink': { bg: '#1A1018', primary: '#EC4899', secondary: '#2D1F28', text: '#FDF2F8' },
+                'cyber-neon': { bg: '#0A0A0F', primary: '#00FF88', secondary: '#12121A', text: '#ECFDF5' },
+                'coffee-brown': { bg: '#1C1410', primary: '#D97706', secondary: '#2A1F18', text: '#FFFBEB' },
+                'arctic-blue': { bg: '#0C1929', primary: '#38BDF8', secondary: '#132438', text: '#F0F9FF' },
+                'dracula': { bg: '#282A36', primary: '#BD93F9', secondary: '#343746', text: '#F8F8F2' }
+            };
+            var theme = null;
+            try { theme = localStorage.getItem('budget-app-theme'); } catch(e) {}
+            var vars = THEME_VARS[theme] || THEME_VARS['midnight-blue'];
+            var root = document.documentElement;
+            root.style.setProperty('--color-bg-primary', vars.bg);
+            root.style.setProperty('--color-primary', vars.primary);
+            root.style.setProperty('--color-bg-secondary', vars.secondary);
+            root.style.setProperty('--color-text-primary', vars.text);
+        })();
+    </script>
     <style>
         :root {
             --color-primary: #3B82F6;

@@ -1,7 +1,7 @@
 // Service Worker for Budget App PWA
-// Version 6 - Fixed iOS background resume black screen issue
-const CACHE_NAME = 'budget-app-v6';
-const API_CACHE_NAME = 'budget-app-api-v4';
+// Version 7 - Fixed cold start theme flash/black screen
+const CACHE_NAME = 'budget-app-v7';
+const API_CACHE_NAME = 'budget-app-api-v5';
 const OFFLINE_PAGE = '/offline.html';
 
 // Max age for cached HTML pages (prevents stale hydration issues)
