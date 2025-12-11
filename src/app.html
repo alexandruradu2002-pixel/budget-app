@@ -6,64 +6,29 @@
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icon-192.png" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.json" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="theme-color" content="#3B82F6" />
+		<meta name="theme-color" id="theme-color-meta" content="#0F172A" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Budget" />
 		<meta name="mobile-web-app-capable" content="yes" />
-		<script>
-			// CRITICAL: Apply theme BEFORE any rendering to prevent black screen/flash
-			// This runs synchronously before anything else
-			(function() {
-				var THEME_BACKGROUNDS = {
-					'midnight-blue': '#0F172A',
-					'emerald-dark': '#0D1117',
-					'sunset-orange': '#18181B',
-					'royal-purple': '#1A1625',
-					'ocean-teal': '#0F1419',
-					'rose-pink': '#1A1018',
-					'cyber-neon': '#0A0A0F',
-					'coffee-brown': '#1C1410',
-					'arctic-blue': '#0C1929',
-					'dracula': '#282A36'
-				};
-				var THEME_PRIMARIES = {
-					'midnight-blue': '#3B82F6',
-					'emerald-dark': '#10B981',
-					'sunset-orange': '#F97316',
-					'royal-purple': '#8B5CF6',
-					'ocean-teal': '#14B8A6',
-					'rose-pink': '#EC4899',
-					'cyber-neon': '#00FF88',
-					'coffee-brown': '#D97706',
-					'arctic-blue': '#38BDF8',
-					'dracula': '#BD93F9'
-				};
-				var storedTheme = null;
-				try {
-					storedTheme = localStorage.getItem('budget-app-theme');
-				} catch(e) {}
-				var theme = storedTheme || 'midnight-blue';
-				var bgColor = THEME_BACKGROUNDS[theme] || '#0F172A';
-				var primaryColor = THEME_PRIMARIES[theme] || '#3B82F6';
-				
-				// Apply theme class immediately
-				document.documentElement.classList.add('theme-' + theme);
-				
-				// Inject critical CSS with correct colors
-				document.write('<style id="critical-theme-css">' +
-					'html, body { background-color: ' + bgColor + ' !important; }' +
-					'.app-loading { background: ' + bgColor + ' !important; }' +
-					'.app-loading-spinner { border-top-color: ' + primaryColor + ' !important; }' +
-				'</style>');
-			})();
-		</script>
-		<style>
+		<style id="theme-critical-css">
+			/* Theme backgrounds - will be overridden by inline script */
+			:root {
+				--theme-bg: #0F172A;
+				--theme-primary: #3B82F6;
+			}
 			/* Initial loading state - prevents black screen on cold start */
+			html, body {
+				background-color: var(--theme-bg) !important;
+				margin: 0;
+				padding: 0;
+				min-height: 100vh;
+				min-height: 100dvh;
+			}
 			.app-loading {
 				position: fixed;
 				inset: 0;
-				background: var(--color-bg-primary, #0F172A);
+				background: var(--theme-bg);
 				display: flex;
 				align-items: center;
 				justify-content: center;
@@ -77,20 +42,52 @@
 			.app-loading-spinner {
 				width: 40px;
 				height: 40px;
-				border: 3px solid #334155;
-				border-top-color: var(--color-primary, #3B82F6);
+				border: 3px solid rgba(255,255,255,0.1);
+				border-top-color: var(--theme-primary);
 				border-radius: 50%;
 				animation: spin 0.8s linear infinite;
 			}
 			@keyframes spin {
 				to { transform: rotate(360deg); }
 			}
-			/* Ensure body has background color immediately */
-			html, body {
-				background: var(--color-bg-primary, #0F172A);
-				margin: 0;
-			}
 		</style>
+		<script>
+			// CRITICAL: Apply theme IMMEDIATELY before any rendering
+			// Must run synchronously in <head> before body renders
+			(function() {
+				var THEMES = {
+					'midnight-blue': { bg: '#0F172A', primary: '#3B82F6' },
+					'emerald-dark': { bg: '#0D1117', primary: '#10B981' },
+					'sunset-orange': { bg: '#18181B', primary: '#F97316' },
+					'royal-purple': { bg: '#1A1625', primary: '#8B5CF6' },
+					'ocean-teal': { bg: '#0F1419', primary: '#14B8A6' },
+					'rose-pink': { bg: '#1A1018', primary: '#EC4899' },
+					'cyber-neon': { bg: '#0A0A0F', primary: '#00FF88' },
+					'coffee-brown': { bg: '#1C1410', primary: '#D97706' },
+					'arctic-blue': { bg: '#0C1929', primary: '#38BDF8' },
+					'dracula': { bg: '#282A36', primary: '#BD93F9' }
+				};
+				
+				var theme = 'midnight-blue';
+				try {
+					var stored = localStorage.getItem('budget-app-theme');
+					if (stored && THEMES[stored]) theme = stored;
+				} catch(e) {}
+				
+				var colors = THEMES[theme];
+				
+				// Set CSS variables on root
+				document.documentElement.style.setProperty('--theme-bg', colors.bg);
+				document.documentElement.style.setProperty('--theme-primary', colors.primary);
+				
+				// Add theme class
+				document.documentElement.classList.add('theme-' + theme);
+				
+				// Update theme-color meta tag
+				var meta = document.getElementById('theme-color-meta');
+				if (meta) meta.setAttribute('content', colors.bg);
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
@@ -101,52 +98,47 @@
 		<div style="display: contents">%sveltekit.body%</div>
 		<script>
 			// Hide loading indicator once app is ready
-			// Use multiple strategies to ensure it gets hidden
 			function hideLoading() {
 				var loader = document.getElementById('app-loading');
-				if (loader) {
+				if (loader && !loader.classList.contains('hidden')) {
 					loader.classList.add('hidden');
-					setTimeout(function() { loader.remove(); }, 200);
+					setTimeout(function() { 
+						if (loader.parentNode) loader.parentNode.removeChild(loader);
+					}, 300);
 				}
 			}
-			// Strategy 1: Hide when DOM is interactive
-			if (document.readyState === 'complete' || document.readyState === 'interactive') {
-				setTimeout(hideLoading, 100);
+			
+			// Strategy 1: Hide when DOM is fully loaded
+			if (document.readyState === 'complete') {
+				hideLoading();
 			} else {
-				document.addEventListener('DOMContentLoaded', function() {
-					setTimeout(hideLoading, 100);
-				});
+				window.addEventListener('load', hideLoading);
 			}
-			// Strategy 2: Fallback - hide after max 5 seconds (cold start timeout)
-			setTimeout(hideLoading, 5000);
-			// Strategy 3: Hide when SvelteKit hydration completes
+			
+			// Strategy 2: Fallback timeout (handles slow networks)
+			setTimeout(hideLoading, 8000);
+			
+			// Strategy 3: SvelteKit hydration complete
 			window.addEventListener('sveltekit:start', hideLoading);
 			
-			// Strategy 4: Handle iOS app resume from background
-			// iOS Safari can freeze the page and show black screen on resume
+			// Strategy 4: Visibility change (app resume from background)
 			document.addEventListener('visibilitychange', function() {
 				if (document.visibilityState === 'visible') {
-					// Force hide loading (might be stuck from previous state)
 					hideLoading();
-					// Check if app content is visible, if not, reload
+					// Check if app is stuck
 					setTimeout(function() {
-						var appContent = document.querySelector('.app-container, main, [data-sveltekit-hydrate]');
-						var body = document.body;
-						// If body is empty or only has loading element, something went wrong
-						if (!appContent && body.children.length < 2) {
-							console.log('[App] Detected empty state on resume, reloading...');
-							window.location.reload();
+						var content = document.querySelector('.app-container, main, [data-sveltekit-hydrate]');
+						if (!content && document.body.children.length < 3) {
+							console.log('[App] Empty state detected, reloading...');
+							location.reload();
 						}
-					}, 500);
+					}, 1000);
 				}
 			});
 			
-			// Strategy 5: Detect page unload and reload issues (iOS PWA fix)
-			window.addEventListener('pageshow', function(event) {
-				if (event.persisted) {
-					// Page was restored from bfcache, hide loading and check state
-					hideLoading();
-				}
+			// Strategy 5: Page restored from bfcache
+			window.addEventListener('pageshow', function(e) {
+				if (e.persisted) hideLoading();
 			});
 		</script>
 	</body>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './layout.css';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { themeStore, keyboardStore } from '$lib/stores';
 	
@@ -15,12 +15,14 @@
 			const loader = document.getElementById('app-loading');
 			if (loader) {
 				loader.classList.add('hidden');
-				setTimeout(() => loader.remove(), 200);
+				setTimeout(() => {
+					if (loader.parentNode) loader.parentNode.removeChild(loader);
+				}, 300);
 			}
 		}
 	}
 	
-	// Handle visibility change (iOS background/foreground transitions)
+	// Handle visibility change (background/foreground transitions)
 	function handleVisibilityChange() {
 		if (document.visibilityState === 'visible') {
 			// App came back to foreground
@@ -34,14 +36,12 @@
 				// Ping service worker to check if it's still responsive
 				if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
 					const pingTimeout = setTimeout(() => {
-						// Service worker didn't respond in time, might be stuck
 						console.log('[App] Service worker unresponsive, checking app state...');
 						checkAppState();
 					}, 2000);
 					
 					navigator.serviceWorker.controller.postMessage({ type: 'PING' });
 					
-					// Listen for pong response
 					const handlePong = (event: MessageEvent) => {
 						if (event.data?.type === 'PONG') {
 							clearTimeout(pingTimeout);
@@ -50,22 +50,33 @@
 					};
 					navigator.serviceWorker.addEventListener('message', handlePong);
 				}
+			} else {
+				// Not hydrated yet but visible - check after delay
+				setTimeout(checkAppState, 2000);
 			}
 		}
 	}
 	
 	// Check if app is in a valid state, reload if stuck
 	function checkAppState() {
-		const appContent = document.querySelector('.app-container, main, [data-sveltekit-hydrate]');
-		if (!appContent) {
+		const appContent = document.querySelector('.app-container, .main-content, main, nav');
+		const bodyHasContent = document.body.children.length > 2;
+		
+		if (!appContent && !bodyHasContent) {
 			console.log('[App] App content missing, reloading...');
-			window.location.reload();
+			// Clear service worker cache before reload to get fresh content
+			if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+				navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PAGE_CACHE' });
+			}
+			setTimeout(() => window.location.reload(), 100);
 		}
 	}
 
 	onMount(() => {
-		// Mark as hydrated
-		isHydrated = true;
+		// Mark as hydrated after tick to ensure DOM is ready
+		tick().then(() => {
+			isHydrated = true;
+		});
 		
 		// Hide loading indicator immediately when component mounts
 		hideAppLoading();
@@ -74,8 +85,15 @@
 		themeStore.init();
 		keyboardStore.init();
 		
-		// Listen for visibility changes (iOS PWA fix)
+		// Listen for visibility changes
 		document.addEventListener('visibilitychange', handleVisibilityChange);
+		
+		// Initial state check after short delay (catches edge cases)
+		setTimeout(() => {
+			if (document.visibilityState === 'visible') {
+				hideAppLoading();
+			}
+		}, 500);
 		
 		if (browser && 'serviceWorker' in navigator) {
 			navigator.serviceWorker.register('/sw.js')

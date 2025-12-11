@@ -1,11 +1,12 @@
 // Service Worker for Budget App PWA
-// Version 7 - Fixed cold start theme flash/black screen
-const CACHE_NAME = 'budget-app-v7';
-const API_CACHE_NAME = 'budget-app-api-v5';
+// Version 8 - Fixed Android black screen on cold start
+const CACHE_NAME = 'budget-app-v8';
+const API_CACHE_NAME = 'budget-app-api-v6';
 const OFFLINE_PAGE = '/offline.html';
 
 // Max age for cached HTML pages (prevents stale hydration issues)
-const PAGE_CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+// Reduced to 1 hour to prevent stale page issues
+const PAGE_CACHE_MAX_AGE = 1 * 60 * 60 * 1000; // 1 hour
 
 // Static resources to cache immediately on install
 const STATIC_RESOURCES = [
@@ -436,7 +437,22 @@ self.addEventListener('message', (event) => {
 		});
 	}
 	
-	// iOS PWA resume fix - check if client is alive
+	// Clear all page caches (for black screen recovery)
+	if (event.data.type === 'CLEAR_PAGE_CACHE') {
+		caches.open(CACHE_NAME).then(async (cache) => {
+			const keys = await cache.keys();
+			for (const request of keys) {
+				if (request.url.includes('.html') || 
+				    request.mode === 'navigate' ||
+				    !request.url.match(/\.(js|css|png|jpg|svg|ico|woff|woff2)$/)) {
+					await cache.delete(request);
+				}
+			}
+			console.log('[SW] Page cache cleared');
+		});
+	}
+	
+	// PWA resume fix - check if client is alive
 	if (event.data.type === 'PING') {
 		event.source?.postMessage({ type: 'PONG' });
 	}
