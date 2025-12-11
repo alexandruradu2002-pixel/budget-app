@@ -6,140 +6,79 @@
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/icon-192.png" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.json" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="theme-color" id="theme-color-meta" content="#0F172A" />
+		<meta name="theme-color" content="#0F172A" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Budget" />
 		<meta name="mobile-web-app-capable" content="yes" />
-		<style id="theme-critical-css">
-			/* Theme backgrounds - will be overridden by inline script */
-			:root {
-				--theme-bg: #0F172A;
-				--theme-primary: #3B82F6;
-			}
-			/* Initial loading state - prevents black screen on cold start */
+		<style>
+			/* CRITICAL: Background color applied immediately */
 			html, body {
-				background-color: var(--theme-bg) !important;
+				background-color: #0F172A;
 				margin: 0;
 				padding: 0;
 				min-height: 100vh;
-				min-height: 100dvh;
 			}
-			.app-loading {
+			/* Loading spinner */
+			#app-loading {
 				position: fixed;
 				inset: 0;
-				background: var(--theme-bg);
+				background: #0F172A;
 				display: flex;
 				align-items: center;
 				justify-content: center;
 				z-index: 9999;
-				transition: opacity 0.2s ease-out;
 			}
-			.app-loading.hidden {
-				opacity: 0;
-				pointer-events: none;
+			#app-loading.hide {
+				display: none;
 			}
-			.app-loading-spinner {
+			.spinner {
 				width: 40px;
 				height: 40px;
-				border: 3px solid rgba(255,255,255,0.1);
-				border-top-color: var(--theme-primary);
+				border: 3px solid #334155;
+				border-top-color: #3B82F6;
 				border-radius: 50%;
 				animation: spin 0.8s linear infinite;
 			}
-			@keyframes spin {
-				to { transform: rotate(360deg); }
-			}
+			@keyframes spin { to { transform: rotate(360deg); } }
 		</style>
 		<script>
-			// CRITICAL: Apply theme IMMEDIATELY before any rendering
-			// Must run synchronously in <head> before body renders
-			(function() {
-				var THEMES = {
-					'midnight-blue': { bg: '#0F172A', primary: '#3B82F6' },
-					'emerald-dark': { bg: '#0D1117', primary: '#10B981' },
-					'sunset-orange': { bg: '#18181B', primary: '#F97316' },
-					'royal-purple': { bg: '#1A1625', primary: '#8B5CF6' },
-					'ocean-teal': { bg: '#0F1419', primary: '#14B8A6' },
-					'rose-pink': { bg: '#1A1018', primary: '#EC4899' },
-					'cyber-neon': { bg: '#0A0A0F', primary: '#00FF88' },
-					'coffee-brown': { bg: '#1C1410', primary: '#D97706' },
-					'arctic-blue': { bg: '#0C1929', primary: '#38BDF8' },
-					'dracula': { bg: '#282A36', primary: '#BD93F9' }
-				};
-				
-				var theme = 'midnight-blue';
-				try {
-					var stored = localStorage.getItem('budget-app-theme');
-					if (stored && THEMES[stored]) theme = stored;
-				} catch(e) {}
-				
-				var colors = THEMES[theme];
-				
-				// Set CSS variables on root
-				document.documentElement.style.setProperty('--theme-bg', colors.bg);
-				document.documentElement.style.setProperty('--theme-primary', colors.primary);
-				
-				// Add theme class
-				document.documentElement.classList.add('theme-' + theme);
-				
-				// Update theme-color meta tag
-				var meta = document.getElementById('theme-color-meta');
-				if (meta) meta.setAttribute('content', colors.bg);
-			})();
+			// Apply theme background immediately
+			try {
+				var t = localStorage.getItem('budget-app-theme');
+				var bg = {
+					'emerald-dark': '#0D1117',
+					'sunset-orange': '#18181B',
+					'royal-purple': '#1A1625',
+					'ocean-teal': '#0F1419',
+					'rose-pink': '#1A1018',
+					'cyber-neon': '#0A0A0F',
+					'coffee-brown': '#1C1410',
+					'arctic-blue': '#0C1929',
+					'dracula': '#282A36'
+				}[t];
+				if (bg) {
+					document.documentElement.style.background = bg;
+					document.body.style.background = bg;
+				}
+				if (t) document.documentElement.classList.add('theme-' + t);
+			} catch(e) {}
 		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
-		<!-- Loading indicator shown during app hydration -->
-		<div id="app-loading" class="app-loading">
-			<div class="app-loading-spinner"></div>
-		</div>
+		<div id="app-loading"><div class="spinner"></div></div>
 		<div style="display: contents">%sveltekit.body%</div>
 		<script>
-			// Hide loading indicator once app is ready
-			function hideLoading() {
-				var loader = document.getElementById('app-loading');
-				if (loader && !loader.classList.contains('hidden')) {
-					loader.classList.add('hidden');
-					setTimeout(function() { 
-						if (loader.parentNode) loader.parentNode.removeChild(loader);
-					}, 300);
-				}
+			// Hide loader when app is ready
+			function hideLoader() {
+				var l = document.getElementById('app-loading');
+				if (l) l.classList.add('hide');
 			}
-			
-			// Strategy 1: Hide when DOM is fully loaded
-			if (document.readyState === 'complete') {
-				hideLoading();
-			} else {
-				window.addEventListener('load', hideLoading);
-			}
-			
-			// Strategy 2: Fallback timeout (handles slow networks)
-			setTimeout(hideLoading, 8000);
-			
-			// Strategy 3: SvelteKit hydration complete
-			window.addEventListener('sveltekit:start', hideLoading);
-			
-			// Strategy 4: Visibility change (app resume from background)
-			document.addEventListener('visibilitychange', function() {
-				if (document.visibilityState === 'visible') {
-					hideLoading();
-					// Check if app is stuck
-					setTimeout(function() {
-						var content = document.querySelector('.app-container, main, [data-sveltekit-hydrate]');
-						if (!content && document.body.children.length < 3) {
-							console.log('[App] Empty state detected, reloading...');
-							location.reload();
-						}
-					}, 1000);
-				}
-			});
-			
-			// Strategy 5: Page restored from bfcache
-			window.addEventListener('pageshow', function(e) {
-				if (e.persisted) hideLoading();
-			});
+			// Multiple fallbacks
+			window.addEventListener('load', hideLoader);
+			window.addEventListener('sveltekit:start', hideLoader);
+			setTimeout(hideLoader, 10000); // 10s max
 		</script>
 	</body>
 </html>

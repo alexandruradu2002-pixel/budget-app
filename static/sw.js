@@ -1,12 +1,11 @@
 // Service Worker for Budget App PWA
-// Version 8 - Fixed Android black screen on cold start
-const CACHE_NAME = 'budget-app-v8';
-const API_CACHE_NAME = 'budget-app-api-v6';
+// Version 9 - Disabled HTML page caching to fix black screen
+const CACHE_NAME = 'budget-app-v9';
+const API_CACHE_NAME = 'budget-app-api-v7';
 const OFFLINE_PAGE = '/offline.html';
 
-// Max age for cached HTML pages (prevents stale hydration issues)
-// Reduced to 1 hour to prevent stale page issues
-const PAGE_CACHE_MAX_AGE = 1 * 60 * 60 * 1000; // 1 hour
+// NOTE: Page caching DISABLED to fix black screen issues on Android
+// Only cache static assets and API responses
 
 // Static resources to cache immediately on install
 const STATIC_RESOURCES = [
@@ -219,13 +218,14 @@ self.addEventListener('fetch', (event) => {
 	// Skip other API requests (auth, mutations, etc.) - always go to network
 	if (url.pathname.startsWith('/api/')) return;
 
-	// Handle ALL navigation requests (not just protected pages)
+	// CRITICAL FIX: Do NOT intercept navigation requests at all
+	// Let the browser handle HTML pages directly to prevent black screen
 	if (event.request.mode === 'navigate') {
-		event.respondWith(handleNavigationRequest(event.request));
+		// Don't intercept - let it go to network directly
 		return;
 	}
 
-	// Handle static resources with cache-first for assets, network-first for others
+	// Handle static resources with cache-first for assets
 	if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/)) {
 		// Cache-first for static assets
 		event.respondWith(
