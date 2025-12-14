@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Transaction, Account, Category, ClearedStatus } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, PageHeader, HeaderButton, FloatingActionButton, CategorySelector, PayeeSelector } from '$lib/components';
-	import { formatDate, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
+	import { formatDateWithDay, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { offlineStore, toast } from '$lib/stores';
@@ -673,7 +673,7 @@
 			{#each groupedTransactions as [date, txs]}
 				<div class="date-group">
 					<div class="date-header">
-						<span class="date-text">{formatDate(date)}</span>
+						<span class="date-text">{formatDateWithDay(date)}</span>
 						<span class="date-count">{txs.length} transaction{txs.length !== 1 ? 's' : ''}</span>
 					</div>
 					<div class="transactions-card">

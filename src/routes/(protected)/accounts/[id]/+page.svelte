@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, FloatingActionButton } from '$lib/components';
-	import { formatDate, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
+	import { formatDateWithDay, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
 	import { offlineStore, toast } from '$lib/stores';
 
 	let accountId = $derived(Number($page.params.id));
@@ -259,7 +259,7 @@
 				/>
 			{:else}
 				{#each groupedTransactions as [date, txs]}
-					<div class="date-header">{formatDate(date)}</div>
+					<div class="date-header">{formatDateWithDay(date)}</div>
 					{#each txs as tx}
 						<button class="transaction-row" onclick={() => openEditModal(tx)}>
 							<div class="transaction-info">

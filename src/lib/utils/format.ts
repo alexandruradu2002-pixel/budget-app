@@ -129,6 +129,19 @@ export function formatDate(dateStr: string): string {
 }
 
 /**
+ * Format a date string with day of week (e.g., "Saturday, 1 December 2025")
+ */
+export function formatDateWithDay(dateStr: string): string {
+	const date = new Date(dateStr + 'T00:00:00');
+	const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+	const months = [
+		'January', 'February', 'March', 'April', 'May', 'June',
+		'July', 'August', 'September', 'October', 'November', 'December'
+	];
+	return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/**
  * Format a date to show month and year (e.g., "December 2025")
  */
 export function formatMonthYear(date: Date): string {
