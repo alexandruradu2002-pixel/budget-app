@@ -4,7 +4,7 @@
 	import type { CurrencyValue } from '$lib/constants';
 	import { TransactionModal, LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
 	import { formatCurrency, formatMonthYearShort } from '$lib/utils/format';
-	import { currencyStore, offlineStore, toast } from '$lib/stores';
+	import { currencyStore, offlineStore, toast, transactionStore } from '$lib/stores';
 
 	// Constants
 	const UNCATEGORIZED = 'Uncategorized';
@@ -715,6 +715,19 @@
 		const __ = rangeMode;
 		
 		loadCategories();
+	});
+
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload categories when transactions change
+			if (rangeInitialized) loadCategories();
+		}
 	});
 </script>
 

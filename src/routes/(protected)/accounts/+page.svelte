@@ -3,7 +3,7 @@
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
 	import { formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
 	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
-	import { currencyStore, offlineStore, toast } from '$lib/stores';
+	import { currencyStore, offlineStore, toast, transactionStore } from '$lib/stores';
 
 	interface CurrencyTotal {
 		currency: string;
@@ -193,8 +193,21 @@
 		}
 	}
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	$effect(() => {
 		loadAccounts();
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload accounts when transactions change (balances may have changed)
+			loadAccounts();
+		}
 	});
 
 	// Move an account up or down within its group

@@ -8,7 +8,7 @@
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
 	import { getCurrencySymbol } from '$lib/utils/format';
-	import { keyboardStore } from '$lib/stores';
+	import { keyboardStore, transactionStore } from '$lib/stores';
 	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
@@ -636,6 +636,9 @@
 
 		await onSave(payload);
 
+		// Notify other pages that transactions have changed
+		transactionStore.notifyChange();
+
 		// Save learned location if we have position data (for new transactions only, not for transfers)
 		if (!editingTransaction && !isTransfer && currentPosition && (formData.description || formData.category_id || formData.account_id)) {
 			const locationData = {
@@ -667,6 +670,8 @@
 		if (!editingTransaction) return;
 		showDeleteConfirm = false;
 		await onDelete(editingTransaction.id);
+		// Notify other pages that transactions have changed
+		transactionStore.notifyChange();
 		closeModal();
 	}
 

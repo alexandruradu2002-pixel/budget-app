@@ -1,7 +1,7 @@
 // Service Worker for Budget App PWA
-// Version 9 - Disabled HTML page caching to fix black screen
-const CACHE_NAME = 'budget-app-v9';
-const API_CACHE_NAME = 'budget-app-api-v7';
+// Version 10 - Cache invalidation fix
+const CACHE_NAME = 'budget-app-v10';
+const API_CACHE_NAME = 'budget-app-api-v8';
 const OFFLINE_PAGE = '/offline.html';
 
 // NOTE: Page caching DISABLED to fix black screen issues on Android

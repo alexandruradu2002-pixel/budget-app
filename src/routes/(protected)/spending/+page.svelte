@@ -4,7 +4,7 @@
 	import { formatDateWithDay, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { offlineStore, toast } from '$lib/stores';
+	import { offlineStore, toast, transactionStore } from '$lib/stores';
 
 	// Transaction payload type for save operations
 	interface TransactionPayload {
@@ -501,6 +501,9 @@
 		}
 	}
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	// Initialize from URL params on mount
 	$effect(() => {
 		const urlParams = $page.url.searchParams;
@@ -517,6 +520,16 @@
 		}
 		
 		loadData(initialSearch, initialCategoryId);
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload data when transactions change
+			loadData(searchQuery, selectedCategoryFilter);
+		}
 	});
 </script>
 

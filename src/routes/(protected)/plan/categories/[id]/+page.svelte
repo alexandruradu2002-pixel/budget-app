@@ -4,7 +4,7 @@
 	import type { Transaction, Category } from '$lib/types';
 	import { LoadingState, EmptyState, TransactionModal, FloatingActionButton } from '$lib/components';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
-	import { toast } from '$lib/stores';
+	import { toast, transactionStore } from '$lib/stores';
 	import { currencyStore } from '$lib/stores/currency.svelte';
 	import { SUPPORTED_CURRENCIES, type CurrencyValue } from '$lib/constants';
 
@@ -284,8 +284,21 @@
 
 	let isOverBudget = $derived(convertedTarget && currentMonthSpending > convertedTarget);
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	$effect(() => {
 		if (categoryId) loadData();
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload data when transactions change
+			if (categoryId) loadData();
+		}
 	});
 </script>
 

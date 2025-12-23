@@ -53,7 +53,7 @@
 		return categories.find(c => c.id === selectedCategoryId);
 	});
 
-	// Group categories by group_name (excluding selected)
+	// Group categories by group_name
 	let groupedCategories = $derived(() => {
 		const filtered = searchQuery
 			? categories.filter(c => 
@@ -65,9 +65,6 @@
 		const groups: Record<string, CategoryWithSpent[]> = {};
 		
 		for (const cat of filtered) {
-			// Skip selected category in the main list
-			if (cat.id === selectedCategoryId) continue;
-			
 			const groupName = cat.group_name || 'Uncategorized';
 			if (!groups[groupName]) {
 				groups[groupName] = [];

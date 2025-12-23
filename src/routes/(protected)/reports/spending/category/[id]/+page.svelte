@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import { TransactionModal } from '$lib/components';
+	import { transactionStore } from '$lib/stores';
 	import type { ClearedStatus, Account, Category } from '$lib/types';
 
 	// Get params from URL
@@ -158,6 +159,9 @@
 		editingTransaction = null;
 	}
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	// Load on mount
 	$effect(() => {
 		loadAccountsAndCategories();
@@ -166,6 +170,16 @@
 	$effect(() => {
 		if (categoryId && startDate && endDate) {
 			loadTransactions();
+		}
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload data when transactions change
+			if (categoryId && startDate && endDate) loadTransactions();
 		}
 	});
 

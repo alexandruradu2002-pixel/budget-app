@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { LoadingState, PageHeader, HeaderButton, WorkInProgress } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
-	import { offlineStore, toast } from '$lib/stores';
+	import { offlineStore, toast, transactionStore } from '$lib/stores';
 
 	let stats = $state({
 		totalBalance: 0,
@@ -82,8 +82,21 @@
 		}
 	}
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	$effect(() => {
 		loadDashboard();
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload dashboard when transactions change
+			loadDashboard();
+		}
 	});
 </script>
 

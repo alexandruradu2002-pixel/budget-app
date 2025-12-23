@@ -3,7 +3,7 @@
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, FloatingActionButton } from '$lib/components';
 	import { formatDateWithDay, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
-	import { offlineStore, toast } from '$lib/stores';
+	import { offlineStore, toast, transactionStore } from '$lib/stores';
 
 	let accountId = $derived(Number($page.params.id));
 	
@@ -192,8 +192,21 @@
 		return labels[type] || type;
 	}
 
+	// Track last known update counter to detect external changes
+	let lastUpdateCounter = $state(0);
+
 	$effect(() => { 
 		if (accountId) loadData(); 
+	});
+
+	// React to transaction changes from other pages (e.g., TransactionModal)
+	$effect(() => {
+		const currentCounter = transactionStore.updateCounter;
+		if (currentCounter > lastUpdateCounter) {
+			lastUpdateCounter = currentCounter;
+			// Reload data when transactions change
+			if (accountId) loadData();
+		}
 	});
 </script>
 
