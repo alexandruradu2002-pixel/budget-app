@@ -8,6 +8,7 @@
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
 	import { getCurrencySymbol } from '$lib/utils/format';
+	import { SUPPORTED_CURRENCIES } from '$lib/constants';
 	import { keyboardStore, transactionStore } from '$lib/stores';
 	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
@@ -76,6 +77,10 @@
 
 	// Delete confirmation dialog state
 	let showDeleteConfirm = $state(false);
+
+	// Transaction currency override state (allows entering amount in different currency than account)
+	let transactionCurrency = $state<string | null>(null); // null means use account currency
+	let showCurrencyDropdown = $state(false);
 
 	// Multi-currency transfer state
 	let exchangeRates = $state<Record<string, number>>({});
@@ -256,22 +261,45 @@
 			userEditedConvertedAmount = false;
 			editingConvertedAmount = false;
 
+			// Reset transaction currency override
+			transactionCurrency = null;
+			showCurrencyDropdown = false;
+
 			// Reset user category change tracking
 			userChangedCategory = false;
 
 			if (editingTransaction) {
-				const amount = Math.abs(Math.round(editingTransaction.amount));
-				formData = {
-					description: editingTransaction.description,
-					amount: amount.toString(),
-					date: editingTransaction.date,
-					account_id: editingTransaction.account_id,
-					category_id: editingTransaction.category_id,
-					notes: editingTransaction.notes || '',
-					isInflow: editingTransaction.amount >= 0,
-					isCleared: false
-				};
-				calcDisplay = amount.toString();
+				// Check if transaction was made in a different currency
+				if (editingTransaction.original_currency && editingTransaction.original_amount !== undefined) {
+					// Restore original currency and amount
+					transactionCurrency = editingTransaction.original_currency;
+					const originalAmt = Math.abs(Math.round(editingTransaction.original_amount));
+					formData = {
+						description: editingTransaction.description,
+						amount: originalAmt.toString(),
+						date: editingTransaction.date,
+						account_id: editingTransaction.account_id,
+						category_id: editingTransaction.category_id,
+						notes: editingTransaction.notes || '',
+						isInflow: editingTransaction.original_amount >= 0,
+						isCleared: false
+					};
+					calcDisplay = originalAmt.toString();
+				} else {
+					// No original currency, use converted amount (account currency)
+					const amount = Math.abs(Math.round(editingTransaction.amount));
+					formData = {
+						description: editingTransaction.description,
+						amount: amount.toString(),
+						date: editingTransaction.date,
+						account_id: editingTransaction.account_id,
+						category_id: editingTransaction.category_id,
+						notes: editingTransaction.notes || '',
+						isInflow: editingTransaction.amount >= 0,
+						isCleared: false
+					};
+					calcDisplay = amount.toString();
+				}
 				isNewInput = false;
 				// Set display names for editing
 				const cat = categories.find(c => c.id === editingTransaction.category_id);
@@ -410,18 +438,80 @@
 		return '';
 	});
 
-	// Get current account's currency symbol
-	let selectedAccountCurrency = $derived(() => {
+	// Get current account's currency code
+	let accountCurrencyCode = $derived(() => {
 		const account = accounts.find(a => a.id === formData.account_id);
-		const currency = account?.currency || 'RON';
-		return getCurrencySymbol(currency);
+		return account?.currency || 'RON';
 	});
 
-	// Formatted display amount with sign and account currency (with thousand separators)
+	// Get current account's currency symbol
+	let selectedAccountCurrency = $derived(() => {
+		return getCurrencySymbol(accountCurrencyCode());
+	});
+
+	// Get the active transaction currency (override or account currency)
+	let activeTransactionCurrency = $derived(() => {
+		return transactionCurrency || accountCurrencyCode();
+	});
+
+	// Get symbol for transaction currency
+	let transactionCurrencySymbol = $derived(() => {
+		return getCurrencySymbol(activeTransactionCurrency());
+	});
+
+	// Check if transaction uses different currency than account
+	let isDifferentCurrency = $derived(() => {
+		return transactionCurrency !== null && transactionCurrency !== accountCurrencyCode();
+	});
+
+	// Calculate converted amount to account currency
+	let convertedToAccountAmount = $derived(() => {
+		if (!isDifferentCurrency()) return parseInt(formData.amount) || 0;
+		
+		const fromCurr = activeTransactionCurrency();
+		const toCurr = accountCurrencyCode();
+		const sourceAmt = parseInt(formData.amount) || 0;
+		
+		if (exchangeRates[fromCurr] && exchangeRates[toCurr]) {
+			// Convert: transaction currency -> RON -> account currency
+			const amountInRON = sourceAmt * exchangeRates[fromCurr];
+			return Math.round(amountInRON / exchangeRates[toCurr]);
+		}
+		return sourceAmt;
+	});
+
+	// Formatted display for converted amount (to account currency)
+	let displayConvertedToAccount = $derived(() => {
+		const num = convertedToAccountAmount();
+		const sign = formData.isInflow ? '+' : '−';
+		const symbol = selectedAccountCurrency();
+		const formatted = num.toLocaleString('ro-RO');
+		
+		if (['€', '$', '£', '¥'].includes(symbol)) {
+			return `${sign}${symbol}${formatted}`;
+		}
+		return `${sign}${formatted} ${symbol}`;
+	});
+
+	// Exchange rate display for transaction currency conversion
+	let transactionExchangeRateDisplay = $derived(() => {
+		if (!isDifferentCurrency()) return '';
+		
+		const fromCurr = activeTransactionCurrency();
+		const toCurr = accountCurrencyCode();
+		
+		if (exchangeRates[fromCurr] && exchangeRates[toCurr]) {
+			const rate = exchangeRates[fromCurr] / exchangeRates[toCurr];
+			return `1 ${fromCurr} = ${rate.toFixed(4)} ${toCurr}`;
+		}
+		return '';
+	});
+
+	// Formatted display amount with sign and transaction currency (with thousand separators)
 	let displayAmount = $derived(() => {
 		const num = parseInt(formData.amount) || 0;
 		const sign = formData.isInflow ? '+' : '−';
-		const symbol = selectedAccountCurrency();
+		const symbol = transactionCurrencySymbol();
 		// Format with thousand separators (using dot as separator)
 		const formatted = num.toLocaleString('ro-RO');
 		
@@ -429,7 +519,7 @@
 		if (['€', '$', '£', '¥'].includes(symbol)) {
 			return `${sign}${symbol}${formatted}`;
 		}
-		return `${sign}${formatted}${symbol}`;
+		return `${sign}${formatted} ${symbol}`;
 	});
 
 	// Handle payee selection (regular payee)
@@ -591,20 +681,29 @@
 			return;
 		}
 
+		// Determine the final amount to save (converted to account currency if different)
+		const finalAmount = isDifferentCurrency() ? convertedToAccountAmount() : amount;
+
 		const payload: Record<string, any> = {
 			description: formData.description || (isTransfer ? 'Transfer' : 'Transaction'),
-			amount: formData.isInflow ? Math.abs(amount) : -Math.abs(amount),
+			amount: formData.isInflow ? Math.abs(finalAmount) : -Math.abs(finalAmount),
 			date: formData.date,
 			account_id: formData.account_id,
 			cleared: formData.isCleared ? 'cleared' : 'uncleared'
 		};
+
+		// Include original currency info if transaction was entered in different currency
+		if (isDifferentCurrency()) {
+			payload.original_currency = activeTransactionCurrency();
+			payload.original_amount = formData.isInflow ? Math.abs(amount) : -Math.abs(amount);
+		}
 
 		// Handle transfer
 		if (isTransfer && transferTargetAccountId) {
 			payload.is_transfer = true;
 			payload.transfer_account_id = transferTargetAccountId;
 			// For transfers, always use outflow from source (the amount will be inverted for target)
-			payload.amount = -Math.abs(amount);
+			payload.amount = -Math.abs(finalAmount);
 			
 			// Include converted amount for multi-currency transfers
 			if (isMultiCurrencyTransfer()) {
@@ -707,9 +806,63 @@
 		<div class="modal-content">
 			<!-- Amount Display -->
 			<div class="amount-display">
-				<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
-					{displayAmount()}
-				</span>
+				<div class="amount-row">
+					<span class="amount-value" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
+						{displayAmount()}
+					</span>
+					<!-- Currency selector button -->
+					<button 
+						type="button" 
+						class="currency-selector-btn"
+						class:different-currency={isDifferentCurrency()}
+						onclick={() => showCurrencyDropdown = !showCurrencyDropdown}
+						aria-label="Select currency"
+					>
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+						</svg>
+					</button>
+				</div>
+				
+				<!-- Currency dropdown -->
+				{#if showCurrencyDropdown}
+					<div class="currency-dropdown-overlay" onclick={() => showCurrencyDropdown = false} role="presentation"></div>
+					<div class="currency-dropdown">
+						{#each SUPPORTED_CURRENCIES as currency}
+							<button
+								type="button"
+								class="currency-option"
+								class:active={activeTransactionCurrency() === currency}
+								onclick={() => {
+									transactionCurrency = currency === accountCurrencyCode() ? null : currency;
+									showCurrencyDropdown = false;
+								}}
+							>
+								<span class="currency-code">{currency}</span>
+								<span class="currency-symbol">{getCurrencySymbol(currency)}</span>
+								{#if currency === accountCurrencyCode()}
+									<span class="currency-account-badge">Cont</span>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+				
+				<!-- Show converted amount to account currency when using different currency -->
+				{#if isDifferentCurrency()}
+					<div class="conversion-arrow">
+						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+						</svg>
+					</div>
+					<span class="amount-value converted" class:inflow={formData.isInflow} class:outflow={!formData.isInflow}>
+						{displayConvertedToAccount()}
+					</span>
+					{#if transactionExchangeRateDisplay()}
+						<span class="exchange-rate-info">{transactionExchangeRateDisplay()}</span>
+					{/if}
+				{/if}
+				
 				{#if isMultiCurrencyTransfer()}
 					<div class="conversion-arrow">
 						<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -1126,6 +1279,7 @@
 		padding: 20px 16px;
 		text-align: center;
 		gap: 4px;
+		position: relative;
 	}
 
 	.amount-value {
@@ -1162,6 +1316,137 @@
 		font-size: 12px;
 		color: var(--color-text-muted);
 		margin-top: 4px;
+	}
+
+	/* Amount row with currency selector */
+	.amount-row {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		position: relative;
+	}
+
+	/* Currency Selector Button */
+	.currency-selector-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		background-color: var(--color-bg-tertiary);
+		border: none;
+		border-radius: 8px;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.currency-selector-btn:active {
+		background-color: var(--color-border);
+	}
+
+	.currency-selector-btn.different-currency {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.currency-selector-btn.different-currency:active {
+		background-color: var(--color-primary-hover);
+	}
+
+	.currency-selector-btn svg {
+		width: 16px;
+		height: 16px;
+	}
+
+	/* Currency Dropdown Overlay */
+	.currency-dropdown-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 220;
+	}
+
+	/* Currency Dropdown */
+	.currency-dropdown {
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		margin-top: 8px;
+		background-color: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		padding: 4px;
+		min-width: 140px;
+		z-index: 221;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+		animation: dropdownFadeIn 0.15s ease-out;
+	}
+
+	@keyframes dropdownFadeIn {
+		from {
+			opacity: 0;
+			transform: translateX(-50%) translateY(-4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0);
+		}
+	}
+
+	.currency-option {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 10px 12px;
+		background: none;
+		border: none;
+		border-radius: 8px;
+		font-size: 14px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+		text-align: left;
+		transition: background-color 0.1s ease;
+	}
+
+	.currency-option:active {
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.currency-option.active {
+		background-color: var(--color-primary);
+		color: white;
+	}
+
+	.currency-option.active .currency-symbol {
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.currency-option.active .currency-account-badge {
+		background-color: rgba(255, 255, 255, 0.2);
+		color: white;
+	}
+
+	.currency-code {
+		font-weight: 600;
+		min-width: 36px;
+	}
+
+	.currency-symbol {
+		color: var(--color-text-muted);
+		flex: 1;
+	}
+
+	.currency-account-badge {
+		font-size: 10px;
+		font-weight: 500;
+		padding: 2px 6px;
+		background-color: var(--color-bg-tertiary);
+		border-radius: 4px;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
 	}
 
 	/* Form Card */

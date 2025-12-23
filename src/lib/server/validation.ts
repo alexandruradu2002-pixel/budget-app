@@ -56,6 +56,8 @@ export const transactionSchema = z.object({
 	is_transfer: z.boolean().optional(),
 	transfer_account_id: z.number().int().positive().optional(),
 	converted_amount: z.number().optional(), // For multi-currency transfers
+	original_currency: z.string().optional(), // Original currency if different from account
+	original_amount: z.number().optional(), // Original amount in original currency
 	notes: z.string().optional(),
 	tags: z.array(z.string()).optional(),
 	ynab_import_id: z.string().optional()

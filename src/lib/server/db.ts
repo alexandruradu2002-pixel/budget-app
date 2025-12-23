@@ -291,6 +291,20 @@ export async function initializeDatabase() {
 		// Column already exists, ignore
 	}
 
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN original_currency TEXT');
+		console.log('✅ Added original_currency column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
+	try {
+		await db.execute('ALTER TABLE transactions ADD COLUMN original_amount REAL');
+		console.log('✅ Added original_amount column to transactions');
+	} catch {
+		// Column already exists, ignore
+	}
+
 	// Create indexes for migrated columns (after migrations)
 	try {
 		await db.execute('CREATE INDEX IF NOT EXISTS idx_categories_group ON categories(group_name)');

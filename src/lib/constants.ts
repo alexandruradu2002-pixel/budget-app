@@ -68,7 +68,7 @@ export const BUDGET_PERIOD_LABELS: Record<BudgetPeriodValue, string> = {
 export const DEFAULT_CURRENCY = 'RON';
 
 // Main supported currencies (for settings/conversion)
-export const SUPPORTED_CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'] as const;
+export const SUPPORTED_CURRENCIES = ['RON', 'EUR', 'USD', 'GBP', 'BGN'] as const;
 
 export type CurrencyValue = (typeof SUPPORTED_CURRENCIES)[number];
 
@@ -76,7 +76,8 @@ export const CURRENCY_SYMBOLS: Record<CurrencyValue, string> = {
 	RON: 'lei',
 	EUR: '€',
 	USD: '$',
-	GBP: '£'
+	GBP: '£',
+	BGN: 'лв'
 };
 
 // All currency symbols (for display purposes - includes international currencies)

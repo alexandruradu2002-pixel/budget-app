@@ -83,6 +83,8 @@ export const GET: RequestHandler = async (event) => {
 		cleared: row.cleared,
 		notes: row.notes,
 		tags: row.tags ? JSON.parse(row.tags as string) : [],
+		original_currency: row.original_currency,
+		original_amount: row.original_amount,
 		created_at: row.created_at,
 		updated_at: row.updated_at,
 		account_name: row.account_name,
@@ -109,6 +111,8 @@ export const POST: RequestHandler = async (event) => {
 	const isTransfer = data.is_transfer ?? false;
 	const transferAccountId = data.transfer_account_id ?? null;
 	const convertedAmount = data.converted_amount ?? null;
+	const originalCurrency = data.original_currency ?? null;
+	const originalAmount = data.original_amount ?? null;
 
 	// Verify account belongs to user
 	await verifyOwnership(db, 'accounts', account_id, user.userId, 'Account');
@@ -188,9 +192,9 @@ export const POST: RequestHandler = async (event) => {
 
 	// Regular transaction (non-transfer)
 	const result = await db.execute({
-		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags)
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		args: [user.userId, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags]
+		sql: `INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, original_currency, original_amount)
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		args: [user.userId, account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, originalCurrency, originalAmount]
 	});
 
 	// Update account balance
@@ -236,6 +240,8 @@ export const PUT: RequestHandler = async (event) => {
 	const cleared = parsed.data.cleared ?? 'uncleared';
 	const notes = parsed.data.notes ?? null;
 	const tags = parsed.data.tags ? JSON.stringify(parsed.data.tags) : null;
+	const originalCurrency = body.original_currency ?? null;
+	const originalAmount = body.original_amount ?? null;
 
 	// Revert old balance
 	await db.execute({
@@ -247,9 +253,10 @@ export const PUT: RequestHandler = async (event) => {
 	await db.execute({
 		sql: `UPDATE transactions 
 			  SET account_id = ?, category_id = ?, amount = ?, description = ?, date = ?, 
-				  payee = ?, memo = ?, cleared = ?, notes = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+				  payee = ?, memo = ?, cleared = ?, notes = ?, tags = ?, 
+				  original_currency = ?, original_amount = ?, updated_at = CURRENT_TIMESTAMP
 			  WHERE id = ? AND user_id = ?`,
-		args: [account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, id, user.userId]
+		args: [account_id, category_id, amount, description, date, payee, memo, cleared, notes, tags, originalCurrency, originalAmount, id, user.userId]
 	});
 
 	// Apply new balance

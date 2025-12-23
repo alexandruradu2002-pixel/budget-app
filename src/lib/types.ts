@@ -75,6 +75,8 @@ export interface Transaction {
 	memo?: string; // YNAB memo field
 	cleared?: ClearedStatus; // YNAB cleared status
 	transfer_account_id?: number; // For transfer transactions
+	original_currency?: string; // Original currency if different from account
+	original_amount?: number; // Original amount in original currency
 	notes?: string;
 	tags?: string[]; // ['recurring', 'tax-deductible']
 	ynab_import_id?: string; // Unique ID for duplicate detection
