@@ -50,6 +50,7 @@ Thumbs.db
 !.github/copilot-instructions.md
 !.github/ISSUE_TEMPLATE/
 !.github/FUNDING.yml
+!.github/prompts/
 
 # Environment files
 .env*.local

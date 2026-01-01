@@ -14,8 +14,7 @@ Self-hosted, open source, privacy-first. Your data stays with you.
 - 💰 **Transactions** - Log, edit, search, and filter transactions
 - 🎯 **Budgets** - Set and track monthly budgets per category
 - 📈 **Reports** - Visual insights (spending trends, category breakdown)
-- 🌍 **Multi-Currency** - Support for RON, EUR, USD, GBP with exchange rates
-- 🌙 **5 Themes** - Midnight Blue, Ocean, Forest, Sunset, Royal Purple
+- 🌍 **Multi-Currency** - Support for any currency with exchange rates
 - 📱 **Mobile-First** - Responsive design, works offline (PWA)
 - 🔐 **Self-Hosted** - Your data stays on your own database
 - 📥 **YNAB Import** - Migrate from You Need A Budget
@@ -93,7 +92,7 @@ npm run dev
 
 ## 📸 Demo
 
-Try the app with sample data: [**Live Demo**](https://budget-app-demo.vercel.app/demo)
+Try the app with sample data: [**Live Demo**](https://budget-app-azure-eight.vercel.app/demo)
 
 ## 🗄️ Database Options
 
@@ -110,24 +109,6 @@ Try the app with sample data: [**Live Demo**](https://budget-app-demo.vercel.app
 - **[Tailwind CSS 4](https://tailwindcss.com/)** - Utility-first CSS with CSS variables
 - **[Vercel](https://vercel.com/)** - Serverless deployment
 
-## 📁 Project Structure
-
-```
-src/lib/
-├── server/           # Server-only: db.ts, auth.ts, validation.ts
-├── components/       # UI components (Svelte 5)
-├── stores/           # Svelte 5 runes stores (*.svelte.ts)
-├── utils/            # Client utilities (format.ts, etc.)
-├── constants.ts      # Enums, labels, currencies
-└── types.ts          # TypeScript interfaces
-
-src/routes/
-├── api/              # REST endpoints (+server.ts)
-├── demo/             # Public demo page
-├── (protected)/      # Auth-required pages
-└── login/            # Public auth pages
-```
-
 ## 📖 Documentation
 
 - [Contributing Guide](CONTRIBUTING.md)
@@ -137,13 +118,6 @@ src/routes/
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
 
-```bash
-# Development
-npm run dev      # Start dev server
-npm run check    # TypeScript + svelte-check
-npm run build    # Production build
-```
-
 ## 💖 Support
 
 If you find this project useful, consider:
@@ -151,6 +125,9 @@ If you find this project useful, consider:
 - 🐛 **Reporting bugs** or suggesting features
 - 💻 **Contributing** code or documentation
 - ☕ **Supporting** on [Patreon](https://www.patreon.com/cw/Alex_Ai14)
+
+## Contact
+email: alexcustomercontacthelp@gmail.com
 
 ## 📄 License
 
