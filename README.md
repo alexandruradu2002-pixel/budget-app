@@ -132,7 +132,3 @@ email: alexcustomercontacthelp@gmail.com
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
-
----
-
-Made with ❤️ by [Alex Radu](https://github.com/alexandruradu2002-pixel)

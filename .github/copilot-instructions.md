@@ -94,21 +94,17 @@ await db.execute({ sql: 'SELECT * FROM accounts WHERE user_id = ? AND name = ?',
 ## Imports
 
 ```typescript
-// Constants - never hardcode enum values
-import { ACCOUNT_TYPES, CATEGORY_TYPES, CLEARED_STATUSES, DEFAULT_CURRENCY } from '$lib/constants';
+// Constants - never hardcode values
+import { ACCOUNT_TYPES, CATEGORY_TYPES, DEFAULT_CURRENCY } from '$lib/constants';
 import type { AccountTypeValue, CategoryTypeValue } from '$lib/constants';
-
 // Types
 import type { Account, Transaction, Category } from '$lib/types';
-
-// Stores
-import { toast, userStore, currencyStore } from '$lib/stores';
-
-// Components - use barrel export
+// Stores - all reactive with runes
+import { toast, userStore, currencyStore, transactionStore, offlineStore } from '$lib/stores';
+// Components - always use barrel export
 import { LoadingState, EmptyState, PageHeader, Button, TransactionModal } from '$lib/components';
-
 // Formatting
-import { formatCurrency, formatAmount, formatWithCurrency } from '$lib/utils/format';
+import { formatCurrency, formatWithCurrency, formatMonthYear } from '$lib/utils/format';
 ```
 
 ## Mobile-First UI
@@ -117,13 +113,22 @@ import { formatCurrency, formatAmount, formatWithCurrency } from '$lib/utils/for
 - Touch targets: minimum 44px height (`min-h-[44px]`)
 - Currency format: RON uses suffix (`100 lei`), EUR/USD/GBP use prefix (`€100`)
 
-## Key Features
+## Cross-Component Communication
 
-**Geolocation Auto-Complete**: Suggests payee/category/account based on user location. See `$lib/utils/geolocation.ts` and `TransactionModal.svelte`.
+Use `transactionStore.notifyUpdate()` after CRUD operations to trigger dashboard/list refreshes:
 
-**Multi-Currency**: Accounts can have different currencies with exchange rate conversion. Default currency is RON.
+```typescript
+// In TransactionModal after save:
+await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) });
+transactionStore.notifyUpdate();  // Dashboard will auto-refresh
 
-**YNAB Import**: Import data from YNAB via `src/lib/server/import-ynab.ts`.
+// In Dashboard:
+$effect(() => {
+  if (transactionStore.updateCounter > lastCounter) {
+    loadDashboard();  // React to changes from other components
+  }
+});
+```
 
 ## Dev Mode
 
