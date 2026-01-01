@@ -1,6 +1,7 @@
 // Middleware utilities
 import type { RequestEvent } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
+import { DEMO_USER_ID } from './demo-seed';
 
 // ============================================
 // User Payload Type
@@ -10,6 +11,7 @@ export interface UserPayload {
 	email: string;
 	name: string;
 	roles: string[];
+	isDemo?: boolean;
 }
 
 // ============================================
@@ -47,4 +49,27 @@ export function requireRole(...allowedRoles: string[]) {
 		}
 		return user;
 	};
+}
+
+// ============================================
+// Require Write Access (blocks demo users)
+// ============================================
+export function requireWriteAccess(event: RequestEvent): UserPayload {
+	const user = requireAuth(event);
+	
+	// Check if demo user
+	if (user.userId === DEMO_USER_ID || user.roles.includes('demo')) {
+		throw error(403, 'Demo mode: modifications are disabled. Sign up for your own account!');
+	}
+	
+	return user;
+}
+
+// ============================================
+// Check if Demo User
+// ============================================
+export function isDemoUser(event: RequestEvent): boolean {
+	const user = event.locals.user;
+	if (!user) return false;
+	return user.userId === DEMO_USER_ID || user.roles.includes('demo');
 }

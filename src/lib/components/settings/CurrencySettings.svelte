@@ -3,6 +3,8 @@
 	import { CURRENCY_SYMBOLS, SUPPORTED_CURRENCIES, type CurrencyValue } from '$lib/constants';
 	import { currencyStore } from '$lib/stores';
 
+	let { disabled = false }: { disabled?: boolean } = $props();
+
 	// Converter state
 	let fromCurrency = $state<CurrencyValue>('EUR');
 	let toCurrency = $state<CurrencyValue>('RON');
@@ -35,6 +37,7 @@
 	});
 
 	function toggleCurrency() {
+		if (disabled) return;
 		currencyStore.toggle();
 	}
 
@@ -69,6 +72,7 @@
 	}
 
 	function swapCurrencies() {
+		if (disabled) return;
 		const temp = fromCurrency;
 		fromCurrency = toCurrency;
 		toCurrency = temp;

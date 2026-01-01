@@ -12,6 +12,7 @@ declare global {
 				email: string;
 				name: string;
 				roles: string[];
+				isDemo?: boolean;
 			} | null;
 		}
 		// interface PageData {}

@@ -7,6 +7,7 @@ interface UserSession {
 	email: string;
 	name: string;
 	roles: string[];
+	isDemo?: boolean;
 }
 
 function createUserStore() {
@@ -59,6 +60,9 @@ function createUserStore() {
 		},
 		get isAdmin() {
 			return user?.roles.includes('admin') ?? false;
+		},
+		get isDemo() {
+			return user?.isDemo ?? false;
 		},
 		load,
 		logout,

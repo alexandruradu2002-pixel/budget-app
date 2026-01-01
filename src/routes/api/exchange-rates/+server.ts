@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { requireAuth } from '$lib/server/middleware';
 
 // In-memory cache for exchange rates
 let cachedRates: Record<string, number> | null = null;
@@ -61,7 +62,10 @@ function isCacheValid(): boolean {
 	return Date.now() - cacheTimestamp < CACHE_DURATION_MS;
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Require authentication - no unauthenticated access
+	requireAuth(event);
+	
 	// Return cached rates if still valid
 	if (isCacheValid() && cachedRates) {
 		return json({

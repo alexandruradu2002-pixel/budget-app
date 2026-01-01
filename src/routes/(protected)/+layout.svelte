@@ -1,16 +1,18 @@
 <script lang="ts">
 	// Protected layout - LOGIN DISABLED: Single user mode
 	import { page } from '$app/stores';
-	import { currencyStore, cacheStore, offlineStore } from '$lib/stores';
+	import { currencyStore, cacheStore, offlineStore, userStore } from '$lib/stores';
 	import { OfflineIndicator } from '$lib/components';
 	
 	let { children } = $props();
 	let currentPath = $derived($page.url.pathname);
+	let showDemoBanner = $state(true);
 
 	// Initialize stores (loads from localStorage cache first, then refreshes in background)
 	$effect(() => {
 		currencyStore.init();
 		offlineStore.init();
+		userStore.load();
 		// Preload accounts and categories for instant modal loading
 		cacheStore.preloadEssentials();
 	});
@@ -30,8 +32,30 @@
 </script>
 
 <div class="app-container">
+	<!-- Demo Mode Banner -->
+	{#if userStore.isDemo && showDemoBanner}
+		<div class="demo-banner">
+			<span class="demo-banner-text">
+				🎭 <strong>Demo Mode</strong> — Explore freely, changes won't be saved
+			</span>
+			<button 
+				class="demo-banner-close" 
+				aria-label="Exit demo"
+				onclick={async () => {
+					await fetch('/api/auth/logout', { method: 'POST' });
+					// Clear caches and force reload
+					if ('caches' in window) {
+						const keys = await caches.keys();
+						await Promise.all(keys.map(key => caches.delete(key)));
+					}
+					window.location.href = '/demo';
+				}}
+			>✕</button>
+		</div>
+	{/if}
+
 	<!-- Main content area -->
-	<main class="main-content">
+	<main class="main-content" class:with-demo-banner={userStore.isDemo && showDemoBanner}>
 		{@render children()}
 	</main>
 
@@ -137,5 +161,50 @@
 	.nav-label {
 		font-size: 11px;
 		font-weight: 500;
+	}
+
+	/* Demo Banner Styles */
+	.demo-banner {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		padding: 0.5rem 1rem;
+		background: linear-gradient(135deg, #8B5CF6, #6366F1);
+		color: white;
+		font-size: 0.85rem;
+		z-index: 200;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+
+	.demo-banner-text {
+		flex: 1;
+		text-align: center;
+	}
+
+	.demo-banner-close {
+		color: white;
+		font-size: 1rem;
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		opacity: 0.8;
+		transition: opacity 0.2s;
+		text-decoration: none;
+		background: rgba(255, 255, 255, 0.15);
+		border-radius: 0.25rem;
+		border: none;
+	}
+
+	.demo-banner-close:hover {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.25);
+	}
+
+	.main-content.with-demo-banner {
+		padding-top: 40px;
 	}
 </style>

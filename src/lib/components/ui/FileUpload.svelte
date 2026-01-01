@@ -9,12 +9,14 @@
 		accept?: string;
 		file: File | null;
 		onchange: (file: File | null) => void;
+		disabled?: boolean;
 	}
 
-	let { id, label, description, required = false, accept = '.csv', file, onchange }: Props =
+	let { id, label, description, required = false, accept = '.csv', file, onchange, disabled = false }: Props =
 		$props();
 
 	function handleChange(event: Event) {
+		if (disabled) return;
 		const input = event.target as HTMLInputElement;
 		if (input.files && input.files[0]) {
 			onchange(input.files[0]);
@@ -22,6 +24,7 @@
 	}
 
 	function clearFile() {
+		if (disabled) return;
 		onchange(null);
 		const input = document.getElementById(id) as HTMLInputElement;
 		if (input) input.value = '';
@@ -43,8 +46,8 @@
 		{/if}
 	</label>
 	<div class="file-input-wrapper">
-		<input type="file" {id} {accept} onchange={handleChange} class="file-input" />
-		<div class="file-display" class:has-file={file}>
+		<input type="file" {id} {accept} onchange={handleChange} class="file-input" {disabled} />
+		<div class="file-display" class:has-file={file} class:disabled>
 			{#if file}
 				<svg class="file-icon success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
@@ -55,7 +58,7 @@
 					/>
 				</svg>
 				<span class="file-name">{file.name}</span>
-				<button type="button" class="clear-btn" onclick={clearFile} aria-label="Clear file">
+				<button type="button" class="clear-btn" onclick={clearFile} aria-label="Clear file" {disabled}>
 					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
@@ -125,6 +128,10 @@
 		z-index: 1;
 	}
 
+	.file-input:disabled {
+		cursor: not-allowed;
+	}
+
 	.file-display {
 		display: flex;
 		align-items: center;
@@ -147,6 +154,12 @@
 		border-color: var(--color-success);
 		border-style: solid;
 		color: var(--color-text-primary);
+	}
+
+	.file-display.disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		pointer-events: none;
 	}
 
 	.file-icon {

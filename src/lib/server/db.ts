@@ -206,6 +206,16 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// App Configuration table (stores app-level settings like password)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS app_config (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`);
+
 	// Learned Locations table (for auto-completing payee/category/account based on location)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS learned_locations (

@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { FileUpload, StatCard, Button, Alert, SettingsSection } from '$lib/components';
 	import { formatCurrency } from '$lib/utils/format';
-	import { toast } from '$lib/stores';
+	import { toast, userStore } from '$lib/stores';
+
+	let { disabled = false }: { disabled?: boolean } = $props();
+
+	// Check if in demo mode
+	let isDemo = $derived(userStore.isDemo);
 
 	// Types
 	interface AnalysisResult {
@@ -41,6 +46,11 @@
 	async function analyzeCSV() {
 		if (!registerFile) return;
 
+		if (isDemo) {
+			toast.info('🎭 Import dezactivat în modul demo');
+			return;
+		}
+
 		analyzing = true;
 		error = null;
 
@@ -70,6 +80,11 @@
 
 	async function importData() {
 		if (!registerFile) return;
+
+		if (isDemo) {
+			toast.info('🎭 Import dezactivat în modul demo');
+			return;
+		}
 		
 		// Confirm if clearing existing data
 		if (clearExisting) {
@@ -205,6 +220,7 @@
 				required
 				file={registerFile}
 				onchange={handleRegisterFile}
+				{disabled}
 			/>
 
 			<FileUpload
@@ -213,6 +229,7 @@
 				description="Contains your budget allocations"
 				file={planFile}
 				onchange={handlePlanFile}
+				{disabled}
 			/>
 
 			{#if error}
@@ -288,7 +305,7 @@
 
 			<div class="actions">
 				{#if !analysis}
-					<Button variant="secondary" onclick={analyzeCSV} disabled={!canAnalyze} loading={analyzing}>
+					<Button variant="secondary" onclick={analyzeCSV} disabled={disabled || !canAnalyze} loading={analyzing}>
 						{analyzing ? 'Analyzing...' : 'Preview Import'}
 					</Button>
 				{:else}
@@ -303,14 +320,14 @@
 						{/if}
 					</div>
 					<div class="action-buttons">
-						<Button onclick={importData} disabled={!canImport} loading={loading}>
+						<Button onclick={importData} disabled={disabled || !canImport} loading={loading}>
 							{#if loading}
 								Importing... please wait
 							{:else}
 								Import {analysis.totalTransactions.toLocaleString()} Transactions
 							{/if}
 						</Button>
-						<Button variant="secondary" onclick={reset} disabled={loading}>
+						<Button variant="secondary" onclick={reset} disabled={disabled || loading}>
 							Cancel
 						</Button>
 					</div>

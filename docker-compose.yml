@@ -21,6 +21,8 @@ services:
       
       # Demo mode (set to "true" to run as public demo)
       - DEMO_MODE=false
+      # Allow demo access (set to "true" to enable /demo page for visitors)
+      - ALLOW_DEMO=false
     volumes:
       # Persist SQLite database
       - budget-data:/app/data

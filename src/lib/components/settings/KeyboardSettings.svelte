@@ -2,7 +2,10 @@
 	import { SettingsSection } from '$lib/components';
 	import { keyboardStore, KEYBOARD_SIZES, type KeyboardSize } from '$lib/stores';
 
+	let { disabled = false }: { disabled?: boolean } = $props();
+
 	function selectSize(size: KeyboardSize) {
+		if (disabled) return;
 		keyboardStore.setSize(size);
 	}
 </script>
@@ -28,7 +31,7 @@
 			{/each}
 		</div>
 		
-		<div class="slider-container">
+		<div class="slider-container" class:disabled>
 			<input
 				type="range"
 				min="1"
@@ -37,6 +40,7 @@
 				value={keyboardStore.current}
 				oninput={(e) => selectSize(parseInt(e.currentTarget.value) as KeyboardSize)}
 				class="size-slider"
+				{disabled}
 			/>
 			<div class="slider-track">
 				{#each KEYBOARD_SIZES as _, i}
@@ -46,6 +50,7 @@
 						class:active={keyboardStore.current >= i + 1}
 						onclick={() => selectSize((i + 1) as KeyboardSize)}
 						aria-label="Selectează dimensiune {KEYBOARD_SIZES[i].label}"
+						{disabled}
 					></button>
 				{/each}
 			</div>
