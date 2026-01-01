@@ -20,11 +20,14 @@ const VALID_THEMES = [
 
 // GET /api/user/settings - Get user settings (theme)
 export const GET: RequestHandler = async (event) => {
-	const user = requireAuth(event);
+	// Return defaults if not authenticated (for login page, etc.)
+	if (!event.locals.user) {
+		return json({ theme: 'midnight-blue' });
+	}
 
 	const result = await db.execute({
 		sql: 'SELECT theme FROM users WHERE id = ?',
-		args: [user.userId] as InValue[]
+		args: [event.locals.user.userId] as InValue[]
 	});
 
 	const theme = result.rows[0]?.theme as string || 'midnight-blue';
