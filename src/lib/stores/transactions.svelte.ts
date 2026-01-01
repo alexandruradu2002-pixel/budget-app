@@ -12,30 +12,16 @@
  * - In pages: use `$effect(() => { transactionStore.updateCounter; loadData(); })`
  */
 
-// Reactive state using Svelte 5 runes
-let updateCounter = $state(0);
+// Use a simple reactive object pattern for better cross-component reactivity
+let _counter = $state({ value: 0 });
 
-function notifyChange() {
-	updateCounter++;
-}
-
-function getUpdateCounter(): number {
-	return updateCounter;
-}
-
-// Export the store as an object with methods and reactive getter
 export const transactionStore = {
-	/**
-	 * Call this after any transaction is created, updated, or deleted
-	 * to trigger refreshes across all listening pages
-	 */
-	notifyChange,
+	notifyChange() {
+		_counter.value++;
+		console.log('[TransactionStore] notifyChange called, counter:', _counter.value);
+	},
 	
-	/**
-	 * Reactive counter that increments on each transaction change.
-	 * Use in $effect to trigger data refreshes.
-	 */
 	get updateCounter() {
-		return updateCounter;
+		return _counter.value;
 	}
 };

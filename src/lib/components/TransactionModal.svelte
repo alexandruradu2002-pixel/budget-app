@@ -10,6 +10,7 @@
 	import { getCurrencySymbol } from '$lib/utils/format';
 	import { SUPPORTED_CURRENCIES } from '$lib/constants';
 	import { keyboardStore, transactionStore } from '$lib/stores';
+	import { pushState, replaceState } from '$app/navigation';
 	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
 	import AccountSelector from './AccountSelector.svelte';
@@ -220,7 +221,7 @@
 		if (show && typeof window !== 'undefined' && window.location.hash !== '#transaction-modal') {
 			// Only push state if not already a sub-selector hash
 			if (!window.location.hash.includes('-selector')) {
-				history.pushState({ transactionModal: true }, '', '#transaction-modal');
+				pushState('#transaction-modal', { transactionModal: true });
 			}
 		}
 	});

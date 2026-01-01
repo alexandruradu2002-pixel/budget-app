@@ -1,12 +1,15 @@
 // Database client and schema initialization
 // Supports both Turso (cloud SQLite) and local SQLite file
 import { createClient } from '@libsql/client';
-import { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
 // Database mode detection:
 // 1. Turso cloud: Both TURSO_DATABASE_URL and TURSO_AUTH_TOKEN set
 // 2. Local SQLite file: TURSO_DATABASE_URL is file:path (no auth needed)
 // 3. In-memory SQLite: No credentials (dev/test mode, data doesn't persist)
+
+const TURSO_DATABASE_URL = env.TURSO_DATABASE_URL;
+const TURSO_AUTH_TOKEN = env.TURSO_AUTH_TOKEN;
 
 const isLocalFile = TURSO_DATABASE_URL?.startsWith('file:');
 const useTursoCloud = TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && !isLocalFile;
@@ -18,14 +21,14 @@ let db: ReturnType<typeof createClient>;
 if (useTursoCloud) {
 	// Production: Turso cloud database
 	db = createClient({
-		url: TURSO_DATABASE_URL!,
-		authToken: TURSO_AUTH_TOKEN!
+		url: TURSO_DATABASE_URL,
+		authToken: TURSO_AUTH_TOKEN
 	});
 	console.log('🌐 Connected to Turso cloud database');
 } else if (useLocalFile) {
 	// Self-hosted: Local SQLite file (no auth token needed)
 	db = createClient({
-		url: TURSO_DATABASE_URL!
+		url: TURSO_DATABASE_URL
 	});
 	console.log('📁 Connected to local SQLite:', TURSO_DATABASE_URL);
 } else {
