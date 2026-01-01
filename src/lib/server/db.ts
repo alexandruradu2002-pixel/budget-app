@@ -216,6 +216,25 @@ export async function initializeDatabase() {
 		)
 	`);
 
+	// Auth tokens table (for magic links and OTP codes)
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS auth_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL,
+			token TEXT NOT NULL,
+			type TEXT NOT NULL CHECK(type IN ('magic_link', 'otp')),
+			expires_at DATETIME NOT NULL,
+			used_at DATETIME,
+			ip_address TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`);
+
+	// Create indexes for auth_tokens
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_auth_tokens_email ON auth_tokens(email)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_auth_tokens_token ON auth_tokens(token)');
+	await db.execute('CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at)');
+
 	// Learned Locations table (for auto-completing payee/category/account based on location)
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS learned_locations (
@@ -385,6 +404,19 @@ export async function initializeDatabase() {
 		console.log('✅ Added notes column to accounts');
 	} catch {
 		// Column already exists, ignore
+	}
+
+	// User email migration - update placeholder email to real email
+	try {
+		const result = await db.execute({
+			sql: `UPDATE users SET email = 'alexandruradu2002@gmail.com' WHERE id = 1 AND email = 'alex@budget.app'`,
+			args: []
+		});
+		if (result.rowsAffected > 0) {
+			console.log('✅ Updated user email to alexandruradu2002@gmail.com');
+		}
+	} catch {
+		// Ignore errors
 	}
 
 	console.log('✅ Database schema initialized');

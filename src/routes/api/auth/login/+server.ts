@@ -75,7 +75,7 @@ export const POST: RequestHandler = async (event) => {
 	});
 
 	let userId = 1;
-	let email = 'alex@budget.app';
+	let email = 'alexandruradu2002@gmail.com';
 	let name = 'Alex';
 
 	if (userResult.rows.length > 0) {
@@ -83,6 +83,12 @@ export const POST: RequestHandler = async (event) => {
 		userId = user.id as number;
 		email = user.email as string;
 		name = user.name as string;
+	} else {
+		// Create user if doesn't exist
+		await db.execute({
+			sql: `INSERT INTO users (id, email, name, password_hash, roles) VALUES (?, ?, ?, '', '["admin", "user"]')`,
+			args: [1, email, name]
+		});
 	}
 
 	// Create session

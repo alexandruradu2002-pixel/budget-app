@@ -413,12 +413,70 @@ open http://localhost:5173
 
 ## Configurare Avansată
 
+### Autentificare
+
+Budget App suportă două metode de autentificare:
+
+#### 🔐 Opțiunea A: Email Magic Link + OTP (Recomandat pentru hosted instances)
+
+Utilizatorii primesc un link magic și cod OTP pe email. Zero parole de ținut minte!
+
+**Setup Resend** (free tier: 100 emails/zi = ~50 utilizatori):
+
+1. Creează cont la [resend.com](https://resend.com)
+2. Obține API Key din dashboard
+3. Adaugă environment variables:
+
+```env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx
+APP_URL=https://your-domain.com
+# Opțional: Custom email sender (necesită domain verificat)
+# EMAIL_FROM=Budget App <login@yourdomain.com>
+```
+
+4. Setează limita de utilizatori (opțional):
+
+```env
+# Limitează la 50 utilizatori (Resend free tier)
+USER_CAP=50
+
+# Sau nelimitat (pentru self-host)
+USER_CAP=unlimited
+```
+
+#### 🔑 Opțiunea B: Parolă (Pentru self-host privat)
+
+Dacă nu configurezi Resend, aplicația folosește autentificare cu parolă:
+
+1. **Prima rulare**: Accesează `/setup` pentru a seta parola
+2. **Sau via environment**:
+
+```env
+# Setează direct în .env (nu se mai cere setup)
+APP_PASSWORD=your-secure-password
+```
+
+> 💡 **Ai uitat parola?** Vezi [docs/PASSWORD_RESET.md](docs/PASSWORD_RESET.md)
+
+#### Care metodă să aleg?
+
+| Scenariu | Recomandare |
+|----------|-------------|
+| **Hosted public** (Vercel/Netlify) | Email Magic Link + OTP |
+| **Self-host single user** | Parolă (mai simplu) |
+| **Self-host cu familie** | Email Magic Link (fiecare cu emailul său) |
+
 ### Environment Variables
 
 | Variabilă | Descriere | Exemplu |
 |-----------|-----------|---------|
 | `TURSO_DATABASE_URL` | URL-ul bazei de date | `libsql://db-user.turso.io` |
 | `TURSO_AUTH_TOKEN` | Token autentificare Turso | `eyJhbGciOi...` |
+| `RESEND_API_KEY` | API key pentru email auth | `re_xxxxxx` |
+| `APP_URL` | URL-ul public al aplicației | `https://budget.example.com` |
+| `USER_CAP` | Limită utilizatori (`50`, `unlimited`) | `50` |
+| `APP_PASSWORD` | Parolă fallback (fără Resend) | `secret123` |
+| `ALLOW_DEMO` | Activează mod demo | `true` |
 | `DATABASE_URL` | URL PostgreSQL/MySQL (alternativ) | `postgresql://user:pass@host:5432/db` |
 | `NODE_ENV` | Environment | `production` sau `development` |
 

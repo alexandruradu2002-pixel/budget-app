@@ -169,7 +169,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (isApiRoute && isWriteMethod && event.locals.user?.isDemo) {
 		// Allow specific routes even for demo users
 		const path = event.url.pathname;
-		const isAllowedWrite = path === '/api/auth/demo' || path === '/api/auth/logout';
+		const isAllowedWrite = 
+			path === '/api/auth/demo' || 
+			path === '/api/auth/logout' ||
+			path === '/api/auth/send-code' ||
+			path === '/api/auth/verify-otp' ||
+			path === '/api/auth/login';
 		
 		if (!isAllowedWrite) {
 			return new Response(

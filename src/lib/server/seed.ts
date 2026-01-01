@@ -14,9 +14,15 @@ export async function seedDatabase(userId: number) {
 		// Create the default user
 		await db.execute({
 			sql: `INSERT INTO users (id, email, name, password_hash, roles) VALUES (?, ?, ?, ?, ?)`,
-			args: [userId, 'alex@budget.app', 'Alex', 'not-used', '["admin", "user"]']
+			args: [userId, 'alexandruradu2002@gmail.com', 'Alex', 'not-used', '["admin", "user"]']
 		});
 		console.log('✅ Created default user');
+	} else {
+		// Update existing user's email if it's the placeholder
+		await db.execute({
+			sql: `UPDATE users SET email = ? WHERE id = ? AND email = 'alex@budget.app'`,
+			args: ['alexandruradu2002@gmail.com', userId]
+		});
 	}
 
 	// Check if already seeded
