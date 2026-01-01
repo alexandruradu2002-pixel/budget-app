@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { SettingsSection } from '$lib/components';
 
+	let { disabled = false }: { disabled?: boolean } = $props();
+
 	// Local storage key for the setting
 	const STORAGE_KEY = 'payee_auto_categorize';
 
@@ -14,6 +16,7 @@
 	});
 
 	function toggleAutoCategorize() {
+		if (disabled) return;
 		autoCategorize = !autoCategorize;
 		localStorage.setItem(STORAGE_KEY, autoCategorize.toString());
 	}
@@ -37,11 +40,13 @@
 				<span class="setting-label">Automatically categorize payee</span>
 				<span class="setting-hint">Când selectezi un payee, categoria va fi auto-selectată bazat pe categoria în care acel payee a apărut cel mai des</span>
 			</div>
-			<button 
+		<button 
 				class="toggle-button" 
 				class:active={autoCategorize}
+				class:disabled
 				onclick={toggleAutoCategorize}
 				aria-label="Toggle auto categorize"
+				{disabled}
 			>
 				<span class="toggle-track">
 					<span class="toggle-thumb"></span>

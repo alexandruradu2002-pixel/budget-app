@@ -2,15 +2,74 @@ import type { Handle } from '@sveltejs/kit';
 import { seedDatabase } from '$lib/server/seed';
 import { getSession, extendSession, cleanupExpiredSessions } from '$lib/server/auth';
 import { logSecurity } from '$lib/server/logger';
+import { DEMO_USER_ID } from '$lib/server/demo-seed';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
+import db from '$lib/server/db';
 
 let seeded = false;
 let lastCleanup = 0;
+let isAppConfigured: boolean | null = null; // Cache setup status
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
 // Check if running in demo mode (only /demo accessible)
 const isDemoMode = env.DEMO_MODE === 'true';
+
+// Check if demo access is allowed (for private instances, set ALLOW_DEMO=true to enable)
+const allowDemo = env.ALLOW_DEMO === 'true';
+
+// Check if app is configured (password set)
+async function checkAppConfigured(): Promise<boolean> {
+	// Use cached value if available
+	if (isAppConfigured !== null) {
+		return isAppConfigured;
+	}
+	
+	try {
+		// Check for password in database
+		const configResult = await db.execute({
+			sql: "SELECT value FROM app_config WHERE key = 'password_hash'",
+			args: []
+		});
+		
+		if (configResult.rows.length > 0) {
+			isAppConfigured = true;
+			return true;
+		}
+		
+		// Fallback: check APP_PASSWORD environment variable
+		if (env.APP_PASSWORD) {
+			isAppConfigured = true;
+			return true;
+		}
+		
+		isAppConfigured = false;
+		return false;
+	} catch {
+		// If check fails, assume not configured
+		return false;
+	}
+}
+
+// Reset cached status (called after setup completes)
+export function resetAppConfiguredCache() {
+	isAppConfigured = null;
+}
+
+// API routes that modify data (demo users should be blocked)
+const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+// API routes that are always allowed for demo users (read-only operations)
+const DEMO_ALLOWED_API_ROUTES = [
+	'/api/auth/demo',
+	'/api/auth/logout',
+	'/api/auth/me',
+	'/api/accounts',
+	'/api/categories',
+	'/api/transactions',
+	'/api/dashboard',
+	'/api/reports',
+	'/api/user'
+];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Demo mode: only allow /demo route
@@ -40,30 +99,96 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
+	const path = event.url.pathname;
+
+	// ============================================
+	// Block Demo API on Private Instances
+	// (but allow /demo page to be viewed - it will show "disabled" message)
+	// ============================================
+	if (!allowDemo && path.startsWith('/api/auth/demo')) {
+		return new Response(
+			JSON.stringify({ error: 'Demo mode is disabled on this instance' }),
+			{ status: 403, headers: { 'Content-Type': 'application/json' } }
+		);
+	}
+
+	// ============================================
+	// Initial Setup Check - Redirect to /setup if not configured
+	// ============================================
+	const isSetupRoute = path === '/setup' || path.startsWith('/api/auth/setup');
+	const isStaticRoute = path.startsWith('/_app') || path.startsWith('/favicon') || path.startsWith('/manifest');
+	
+	if (!isSetupRoute && !isStaticRoute) {
+		const configured = await checkAppConfigured();
+		
+		if (!configured) {
+			// Not configured - redirect to setup page
+			if (path.startsWith('/api/')) {
+				return new Response(
+					JSON.stringify({ error: 'App not configured', needsSetup: true }),
+					{ status: 403, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+			return new Response(null, {
+				status: 302,
+				headers: { Location: '/setup' }
+			});
+		}
+	}
+
 	// Check for valid session
 	const sessionId = event.cookies.get('session');
 
 	if (sessionId) {
 		const session = await getSession(sessionId);
 		if (session) {
+			const isDemo = session.userId === DEMO_USER_ID;
 			event.locals.user = {
 				userId: session.userId,
 				email: session.email,
 				name: session.name,
-				roles: session.roles
+				roles: session.roles,
+				isDemo
 			};
-			// Extend session (sliding expiration)
-			await extendSession(sessionId);
+			// Extend session (sliding expiration) - but not for demo users
+			if (!isDemo) {
+				await extendSession(sessionId);
+			}
 		} else {
 			// Invalid/expired session - clear the cookie
 			event.cookies.delete('session', { path: '/' });
 		}
 	}
 
+	// ============================================
+	// Block Write Operations for Demo Users
+	// ============================================
+	const isApiRoute = event.url.pathname.startsWith('/api/');
+	const isWriteMethod = WRITE_METHODS.includes(event.request.method);
+	
+	if (isApiRoute && isWriteMethod && event.locals.user?.isDemo) {
+		// Allow specific routes even for demo users
+		const path = event.url.pathname;
+		const isAllowedWrite = path === '/api/auth/demo' || path === '/api/auth/logout';
+		
+		if (!isAllowedWrite) {
+			return new Response(
+				JSON.stringify({ 
+					error: 'Demo mode: modifications are disabled',
+					message: 'This is a read-only demo. Sign up for your own account to make changes!',
+					isDemo: true
+				}), 
+				{
+					status: 403,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			);
+		}
+	}
+
 	// Protected routes - redirect to login if not authenticated
 	const protectedPaths = ['/dashboard', '/accounts', '/plan', '/spending', '/reports', '/settings'];
 	const isProtectedRoute = protectedPaths.some(path => event.url.pathname.startsWith(path));
-	const isApiRoute = event.url.pathname.startsWith('/api/');
 	
 	if (isProtectedRoute && !event.locals.user) {
 		return new Response(null, {

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { PageHeader, SettingsSection, CurrencySettings, YNABImport, PayeeSettings, Button, ThemeSettings, KeyboardSettings } from '$lib/components';
-	import { toast } from '$lib/stores';
+	import { toast, userStore } from '$lib/stores';
 	import { goto } from '$app/navigation';
+	
+	// Check if in demo mode - block destructive actions
+	let isDemo = $derived(userStore.isDemo);
 	
 	let recalculating = $state(false);
 	let exportingJSON = $state(false);
@@ -26,6 +29,10 @@
 	});
 	
 	async function recalculateBalances() {
+		if (isDemo) {
+			toast.info('🎭 Acțiune blocată în modul demo');
+			return;
+		}
 		recalculating = true;
 		try {
 			const response = await fetch('/api/accounts?action=recalculate-balances', {
@@ -46,6 +53,10 @@
 	}
 	
 	async function exportData(format: 'json' | 'csv') {
+		if (isDemo) {
+			toast.info('🎭 Export dezactivat în modul demo');
+			return;
+		}
 		const loading = format === 'json' ? () => exportingJSON = true : () => exportingCSV = true;
 		const done = format === 'json' ? () => exportingJSON = false : () => exportingCSV = false;
 		
@@ -91,6 +102,10 @@
 	}
 
 	async function handleLogout() {
+		if (isDemo) {
+			goto('/demo');
+			return;
+		}
 		loggingOut = true;
 		try {
 			await fetch('/api/auth/logout', { method: 'POST' });
@@ -110,16 +125,16 @@
 		<ThemeSettings />
 
 		<!-- Keyboard Size Settings -->
-		<KeyboardSettings />
+		<KeyboardSettings disabled={isDemo} />
 
 		<!-- Currency Settings Section -->
-		<CurrencySettings />
+		<CurrencySettings disabled={isDemo} />
 
 		<!-- Payee Settings Section -->
-		<PayeeSettings />
+		<PayeeSettings disabled={isDemo} />
 
 		<!-- YNAB Import Section -->
-		<YNABImport />
+		<YNABImport disabled={isDemo} />
 
 		<!-- Backup & Export Section -->
 		<SettingsSection title="Backup & Export" description="Exportă datele pentru siguranță">
@@ -159,7 +174,7 @@
 						variant="primary" 
 						onclick={() => exportData('json')} 
 						loading={exportingJSON}
-						disabled={exportingJSON || exportingCSV}
+						disabled={isDemo || exportingJSON || exportingCSV}
 					>
 						{exportingJSON ? 'Se exportă...' : '📥 JSON'}
 					</Button>
@@ -174,7 +189,7 @@
 						variant="secondary" 
 						onclick={() => exportData('csv')} 
 						loading={exportingCSV}
-						disabled={exportingJSON || exportingCSV}
+						disabled={isDemo || exportingJSON || exportingCSV}
 					>
 						{exportingCSV ? 'Se exportă...' : '📊 CSV'}
 					</Button>
@@ -246,7 +261,7 @@
 						variant="secondary" 
 						onclick={recalculateBalances} 
 						loading={recalculating}
-						disabled={recalculating}
+						disabled={isDemo || recalculating}
 					>
 						{recalculating ? 'Se recalculează...' : 'Recalculează'}
 					</Button>
@@ -268,14 +283,24 @@
 			{/snippet}
 
 			<div class="logout-section">
-				<p class="logout-info">Session is active. You can logout to require password again.</p>
+				<p class="logout-info">
+					{#if isDemo}
+						Ești în modul demo. Apasă pentru a ieși.
+					{:else}
+						Session is active. You can logout to require password again.
+					{/if}
+				</p>
 				<Button 
-					variant="danger" 
+					variant={isDemo ? 'primary' : 'danger'}
 					onclick={handleLogout} 
 					loading={loggingOut}
 					disabled={loggingOut}
 				>
-					{loggingOut ? 'Logging out...' : '🚪 Logout'}
+					{#if isDemo}
+						🎭 Ieși din Demo
+					{:else}
+						{loggingOut ? 'Logging out...' : '🚪 Logout'}
+					{/if}
 				</Button>
 			</div>
 		</SettingsSection>

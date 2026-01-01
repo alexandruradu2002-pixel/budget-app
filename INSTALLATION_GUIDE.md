@@ -56,7 +56,11 @@ docker compose up -d
 open http://localhost:3000
 ```
 
-**✅ Gata!** Datele tale sunt salvate în `./data/budget.db` și persistă între restartări.
+**✅ Gata!** La prima accesare, vei fi redirecționat la pagina de **Setup Inițial** unde îți vei seta parola.
+
+> 💡 **Ai uitat parola?** Vezi [docs/PASSWORD_RESET.md](docs/PASSWORD_RESET.md) pentru instrucțiuni de resetare.
+
+Datele tale sunt salvate în `./data/budget.db` și persistă între restartări.
 
 ---
 

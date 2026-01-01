@@ -11,6 +11,7 @@ export const GET: RequestHandler = async (event) => {
 		userId: event.locals.user.userId,
 		email: event.locals.user.email,
 		name: event.locals.user.name,
-		roles: event.locals.user.roles
+		roles: event.locals.user.roles,
+		isDemo: event.locals.user.isDemo ?? false
 	});
 };

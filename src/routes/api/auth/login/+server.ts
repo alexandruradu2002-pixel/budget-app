@@ -1,4 +1,4 @@
-// Login endpoint - Single user with environment password
+// Login endpoint - Single user with database password (or fallback to APP_PASSWORD env)
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createSession, setSessionCookie } from '$lib/server/auth';
@@ -6,6 +6,15 @@ import { authRateLimiter, checkRateLimit } from '$lib/server/rate-limit';
 import { logSecurity } from '$lib/server/logger';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/db';
+import crypto from 'crypto';
+
+// ============================================
+// Verify password against stored hash
+// ============================================
+function verifyPassword(password: string, storedHash: string, salt: string): boolean {
+	const hash = crypto.createHash('sha256').update(password + salt).digest('hex');
+	return hash === storedHash;
+}
 
 export const POST: RequestHandler = async (event) => {
 	// Rate limiting - prevent brute force attacks
@@ -19,16 +28,40 @@ export const POST: RequestHandler = async (event) => {
 
 	const { password } = await event.request.json();
 
-	// Get APP_PASSWORD from environment variable
-	const appPassword = env.APP_PASSWORD;
+	// Try to get password from database first (setup flow)
+	const configResult = await db.execute({
+		sql: "SELECT key, value FROM app_config WHERE key IN ('password_hash', 'password_salt')",
+		args: []
+	});
 
-	if (!appPassword) {
-		console.error('APP_PASSWORD environment variable is not set!');
-		return json({ error: 'Server configuration error' }, { status: 500 });
+	let isValid = false;
+
+	if (configResult.rows.length === 2) {
+		// Password is configured in database - use it
+		const configMap = new Map(configResult.rows.map(r => [r.key as string, r.value as string]));
+		const storedHash = configMap.get('password_hash');
+		const storedSalt = configMap.get('password_salt');
+
+		if (storedHash && storedSalt) {
+			isValid = verifyPassword(password, storedHash, storedSalt);
+		}
+	} else {
+		// Fallback: check APP_PASSWORD environment variable (legacy support)
+		const appPassword = env.APP_PASSWORD;
+
+		if (!appPassword) {
+			// No password configured at all - redirect to setup
+			return json(
+				{ error: 'App not configured', needsSetup: true },
+				{ status: 403 }
+			);
+		}
+
+		isValid = password === appPassword;
 	}
 
 	// Verify password
-	if (password !== appPassword) {
+	if (!isValid) {
 		logSecurity('Failed login attempt', {
 			ip: event.getClientAddress()
 		});
