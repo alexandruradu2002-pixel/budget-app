@@ -3,6 +3,7 @@
 A personal budgeting app built with **SvelteKit 5 + SQLite (Turso) + Tailwind 4**.
 
 Self-hosted, open source, privacy-first. Your data stays with you.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## ✨ Features
@@ -24,7 +25,7 @@ Try the app with sample data: [**Live Demo**](https://budget-app-azure-eight.ver
 ## 🚀 Installation
 
 - [Installation Guide](INSTALLATION_GUIDE.md) - Deploying Budget App
-- 
+  
 ## 🤝 Contributing
 
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
