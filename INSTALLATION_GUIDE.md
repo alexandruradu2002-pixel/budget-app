@@ -6,17 +6,39 @@
 
 ## Cuprins
 
-- [Care variantă e pentru mine?](#care-variantă-e-pentru-mine)
-- [Cea mai ușoară variantă (Începători)](#cea-mai-ușoară-variantă-începători)
-- [Opțiuni Database](#opțiuni-database)
-- [Ghid de Instalare](#ghid-de-instalare)
-  - [Opțiunea 1: Docker](#opțiunea-1-docker-recomandat-pentru-începători)
-  - [Opțiunea 2: Deploy pe Vercel + Turso](#opțiunea-2-deploy-pe-vercel--turso)
-  - [Opțiunea 3: Self-Host cu PostgreSQL](#opțiunea-3-self-host-cu-postgresql)
-  - [Opțiunea 4: Development Local](#opțiunea-4-development-local)
-- [Configurare Avansată](#configurare-avansată)
-- [FAQ & Troubleshooting](#faq--troubleshooting)
-- [Resurse Utile](#resurse-utile)
+- [Budget App - Installation Guide](#budget-app---installation-guide)
+  - [Cuprins](#cuprins)
+  - [Care variantă e pentru mine?](#care-variantă-e-pentru-mine)
+  - [Cea mai ușoară variantă (Începători)](#cea-mai-ușoară-variantă-începători)
+    - [🖥️ Varianta A: Local cu Docker](#️-varianta-a-local-cu-docker)
+    - [☁️ Varianta B: Cloud cu Netlify (gratuit)](#️-varianta-b-cloud-cu-netlify-gratuit)
+  - [Opțiuni Database](#opțiuni-database)
+    - [Comparație completă](#comparație-completă)
+    - [1. SQLite (Local File) - Cea mai simplă](#1-sqlite-local-file---cea-mai-simplă)
+    - [2. Turso (Cloud SQLite) - Recomandat pentru producție](#2-turso-cloud-sqlite---recomandat-pentru-producție)
+    - [3. PostgreSQL - Enterprise-grade](#3-postgresql---enterprise-grade)
+  - [Ghid de Instalare](#ghid-de-instalare)
+    - [Opțiunea 1: Docker (Recomandat pentru începători)](#opțiunea-1-docker-recomandat-pentru-începători)
+    - [Opțiunea 2: Deploy pe Vercel + Turso](#opțiunea-2-deploy-pe-vercel--turso)
+      - [Pas 1: Creează database Turso](#pas-1-creează-database-turso)
+      - [Pas 2: Deploy pe Vercel](#pas-2-deploy-pe-vercel)
+    - [Opțiunea 3: Deploy pe Netlify + Turso](#opțiunea-3-deploy-pe-netlify--turso)
+      - [Pas 1: Creează database Turso](#pas-1-creează-database-turso-1)
+      - [Pas 2: Deploy pe Netlify](#pas-2-deploy-pe-netlify)
+      - [Pas 3: Configurare (opțional)](#pas-3-configurare-opțional)
+    - [Opțiunea 4: Self-Host cu PostgreSQL](#opțiunea-4-self-host-cu-postgresql)
+    - [Opțiunea 5: Development Local](#opțiunea-5-development-local)
+  - [Configurare Avansată](#configurare-avansată)
+    - [Environment Variables](#environment-variables)
+    - [Reverse Proxy (Nginx)](#reverse-proxy-nginx)
+    - [SSL cu Let's Encrypt](#ssl-cu-lets-encrypt)
+  - [FAQ \& Troubleshooting](#faq--troubleshooting)
+    - [Aplicația nu pornește](#aplicația-nu-pornește)
+    - [Cum fac backup la date?](#cum-fac-backup-la-date)
+    - [Cum migrez de la SQLite la PostgreSQL?](#cum-migrez-de-la-sqlite-la-postgresql)
+    - [Eroare "Database is locked"](#eroare-database-is-locked)
+    - [Cum actualizez la ultima versiune?](#cum-actualizez-la-ultima-versiune)
+  - [Resurse Utile](#resurse-utile)
 
 ---
 
@@ -34,12 +56,22 @@
 
 ## Cea mai ușoară variantă (Începători)
 
-> **🎉 Zero configurare database! Funcționează în 2 minute.**
+> **🎉 Zero configurare database! Funcționează în câteva minute.**
 
-### Cerințe
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalat (download gratuit)
+Alege varianta care ți se potrivește:
 
-### Pași
+| Variantă | Avantaje | Dezavantaje |
+|----------|----------|-------------|
+| 🖥️ **Local (Docker)** | Date pe calculatorul tău, offline | Trebuie să ruleze PC-ul |
+| ☁️ **Cloud (Netlify)** | Accesibil de oriunde, mereu online | Date în cloud |
+
+---
+
+### 🖥️ Varianta A: Local cu Docker
+
+> **Timp**: ~2 minute | Datele rămân pe calculatorul tău
+
+**Cerințe**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalat (download gratuit)
 
 ```bash
 # 1. Descarcă proiectul
@@ -56,11 +88,29 @@ docker compose up -d
 open http://localhost:3000
 ```
 
-**✅ Gata!** La prima accesare, vei fi redirecționat la pagina de **Setup Inițial** unde îți vei seta parola.
+**✅ Gata!** Datele sunt salvate local în `./data/budget.db`.
+
+---
+
+### ☁️ Varianta B: Cloud cu Netlify (gratuit)
+
+> **Timp**: ~10 minute | Accesibil de pe orice dispozitiv
+
+**Cerințe**: Cont GitHub (gratuit)
+
+**Pas 1**: Click pe butonul de deploy:
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/alexandruradu2002-pixel/budget_app)
+
+**Pas 2**: Creează database Turso (gratuit) - vezi [instrucțiuni detaliate](#opțiunea-3-deploy-pe-netlify--turso)
+
+**Pas 3**: Adaugă credențialele Turso în Netlify → Site settings → Environment variables
+
+**✅ Gata!** Aplicația ta e live la `https://your-site.netlify.app`
+
+---
 
 > 💡 **Ai uitat parola?** Vezi [docs/PASSWORD_RESET.md](docs/PASSWORD_RESET.md) pentru instrucțiuni de resetare.
-
-Datele tale sunt salvate în `./data/budget.db` și persistă între restartări.
 
 ---
 
@@ -229,7 +279,53 @@ turso db tokens create budget-app
 
 ---
 
-### Opțiunea 3: Self-Host cu PostgreSQL
+### Opțiunea 3: Deploy pe Netlify + Turso
+
+> **Dificultate**: ⭐⭐ Ușor | **Timp**: ~10 minute
+
+**Cerințe**: Cont GitHub, cont Netlify (gratuit), cont Turso (gratuit)
+
+**Free tier Netlify**: 100GB bandwidth/lună, 300 build minutes/lună - mai mult decât suficient pentru uz personal.
+
+#### Pas 1: Creează database Turso
+
+```bash
+# Instalează Turso CLI
+curl -sSfL https://get.tur.so/install.sh | bash
+
+# Autentificare
+turso auth signup    # sau: turso auth login
+
+# Creează database
+turso db create budget-app
+
+# Copiază aceste valori (le vei folosi în Netlify)
+turso db show budget-app --url
+turso db tokens create budget-app
+```
+
+#### Pas 2: Deploy pe Netlify
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/alexandruradu2002-pixel/budget_app)
+
+1. Click pe butonul de mai sus
+2. Conectează-ți contul GitHub
+3. Netlify va crea automat un fork și va începe build-ul
+4. După deploy, mergi la **Site settings** → **Environment variables**
+5. Adaugă:
+   - `TURSO_DATABASE_URL` = URL-ul de la `turso db show`
+   - `TURSO_AUTH_TOKEN` = Token-ul de la `turso db tokens create`
+6. **Deploys** → **Trigger deploy** → **Deploy site** (pentru a aplica variabilele)
+
+#### Pas 3: Configurare (opțional)
+
+Pentru a schimba domeniul:
+1. **Site settings** → **Domain management** → **Add custom domain**
+2. Netlify oferă și subdomenii gratuite: `your-budget.netlify.app`
+
+---
+
+### Opțiunea 4: Self-Host cu PostgreSQL
 
 > **Dificultate**: ⭐⭐⭐ Mediu | **Timp**: ~15 minute
 
@@ -284,7 +380,7 @@ docker compose exec postgres pg_dump -U budget budget_app > backup_$(date +%Y%m%
 
 ---
 
-### Opțiunea 4: Development Local
+### Opțiunea 5: Development Local
 
 > **Dificultate**: ⭐⭐ Ușor | **Timp**: ~5 minute
 
@@ -410,6 +506,8 @@ docker compose up -d
 ## Resurse Utile
 
 - **Documentație Turso**: https://docs.turso.tech
+- **Netlify Docs**: https://docs.netlify.com
+- **Vercel Docs**: https://vercel.com/docs
 - **Docker pentru începători**: https://docs.docker.com/get-started/
 - **SvelteKit Docs**: https://kit.svelte.dev/docs
 - **PostgreSQL Docs**: https://www.postgresql.org/docs/
