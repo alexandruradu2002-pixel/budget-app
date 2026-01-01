@@ -20,21 +20,75 @@ vite.config.ts.timestamp-*
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # Editor
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+.idea/
+*.sublime-workspace
+*.sublime-project
 
 # Testing
 coverage/
+.nyc_output/
+playwright-report/
+test-results/
 
 # OS
 Thumbs.db
 *.swp
 *.swo
+*~
 
-# GitHub - keep copilot instructions
+# GitHub - keep important files
 .github/*
 !.github/copilot-instructions.md
+!.github/ISSUE_TEMPLATE/
+!.github/FUNDING.yml
+
+# Environment files
 .env*.local
+
+# Backup files - NEVER COMMIT PERSONAL DATA
+Backup/
+backup/
+backups/
+*.backup
+*_backup.*
+
+# Local data directory (Docker volume)
+data/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+
+# Misc
+.DS_Store
+*.pem
+*.key
+*.crt
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local Netlify folder
+.netlify
+
+# Turbo
+.turbo
+
+# Build outputs
+dist/
+out/
+lib-dist/

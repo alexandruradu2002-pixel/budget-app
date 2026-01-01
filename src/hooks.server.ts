@@ -1,11 +1,32 @@
 import type { Handle } from '@sveltejs/kit';
 import { seedDatabase } from '$lib/server/seed';
 import { getSession, extendSession } from '$lib/server/auth';
+import { DEMO_MODE } from '$env/static/private';
 
 let seeded = false;
 
+// Check if running in demo mode (only /demo accessible)
+const isDemoMode = DEMO_MODE === 'true';
+
 export const handle: Handle = async ({ event, resolve }) => {
-	// Seed database on first request
+	// Demo mode: only allow /demo route
+	if (isDemoMode) {
+		const path = event.url.pathname;
+		
+		// Allow demo page, static assets, and API for demo
+		if (!path.startsWith('/demo') && !path.startsWith('/_app') && !path.startsWith('/favicon')) {
+			// Redirect everything to /demo
+			return new Response(null, {
+				status: 302,
+				headers: { Location: '/demo' }
+			});
+		}
+		
+		// Demo mode - no DB operations needed
+		return resolve(event);
+	}
+
+	// Seed database on first request (non-demo mode only)
 	if (!seeded) {
 		seeded = true;
 		try {

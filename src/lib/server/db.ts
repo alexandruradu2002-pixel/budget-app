@@ -1,23 +1,43 @@
 // Database client and schema initialization
+// Supports both Turso (cloud SQLite) and local SQLite file
 import { createClient } from '@libsql/client';
 import { TURSO_DATABASE_URL, TURSO_AUTH_TOKEN } from '$env/static/private';
 
-// Use in-memory SQLite if credentials are missing (dev/test mode)
-const useMockDb = !TURSO_DATABASE_URL || !TURSO_AUTH_TOKEN;
+// Database mode detection:
+// 1. Turso cloud: Both TURSO_DATABASE_URL and TURSO_AUTH_TOKEN set
+// 2. Local SQLite file: TURSO_DATABASE_URL is file:path (no auth needed)
+// 3. In-memory SQLite: No credentials (dev/test mode, data doesn't persist)
 
-const db = useMockDb
-	? createClient({
-			url: ':memory:'
-		})
-	: createClient({
-			url: TURSO_DATABASE_URL!,
-			authToken: TURSO_AUTH_TOKEN!
-		});
+const isLocalFile = TURSO_DATABASE_URL?.startsWith('file:');
+const useTursoCloud = TURSO_DATABASE_URL && TURSO_AUTH_TOKEN && !isLocalFile;
+const useLocalFile = isLocalFile;
+const useMockDb = !useTursoCloud && !useLocalFile;
 
-if (useMockDb) {
-	console.warn('⚠️  Using in-memory SQLite (no Turso credentials found)');
+let db: ReturnType<typeof createClient>;
+
+if (useTursoCloud) {
+	// Production: Turso cloud database
+	db = createClient({
+		url: TURSO_DATABASE_URL!,
+		authToken: TURSO_AUTH_TOKEN!
+	});
+	console.log('🌐 Connected to Turso cloud database');
+} else if (useLocalFile) {
+	// Self-hosted: Local SQLite file (no auth token needed)
+	db = createClient({
+		url: TURSO_DATABASE_URL!
+	});
+	console.log('📁 Connected to local SQLite:', TURSO_DATABASE_URL);
+} else {
+	// Development: In-memory SQLite
+	db = createClient({
+		url: ':memory:'
+	});
+	console.warn('⚠️  Using in-memory SQLite (no database credentials found)');
 	console.warn('⚠️  Data will not persist across restarts!');
 }
+
+export default db;
 
 // ============================================
 // Database Schema Initialization
