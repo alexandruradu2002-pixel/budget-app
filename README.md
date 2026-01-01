@@ -150,7 +150,7 @@ If you find this project useful, consider:
 - ⭐ **Starring** the repository
 - 🐛 **Reporting bugs** or suggesting features
 - 💻 **Contributing** code or documentation
-- ☕ **Supporting** on [Patreon](https://patreon.com/your-username) (coming soon)
+- ☕ **Supporting** on [Patreon](https://www.patreon.com/cw/Alex_Ai14)
 
 ## 📄 License
 

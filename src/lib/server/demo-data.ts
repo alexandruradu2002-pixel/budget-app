@@ -1,7 +1,7 @@
 // Demo data generator for /demo page
 // Generates realistic mock data for showcase purposes
+// All data is completely fictional for demonstration
 
-import { ACCOUNT_TYPES, CATEGORY_TYPES, CLEARED_STATUSES } from '$lib/constants';
 import type { Account, Category, Transaction } from '$lib/types';
 
 // Deterministic random based on seed for consistent demo data
@@ -28,16 +28,20 @@ function randomDate(daysBack: number): string {
 	return date.toISOString().split('T')[0];
 }
 
-// Demo Accounts
+// ============================================================
+// FICTIONAL DEMO DATA - All names are made up for demonstration
+// ============================================================
+
+// Demo Accounts - Generic fictional bank accounts
 export function generateDemoAccounts(): Account[] {
 	return [
 		{
 			id: 1,
 			user_id: 0,
-			name: 'Cont Principal',
+			name: 'Primary Checking',
 			type: 'checking',
-			balance: 12450.75,
-			currency: 'RON',
+			balance: 4825.50,
+			currency: 'USD',
 			color: '#22C55E',
 			icon: undefined,
 			notes: undefined,
@@ -48,10 +52,10 @@ export function generateDemoAccounts(): Account[] {
 		{
 			id: 2,
 			user_id: 0,
-			name: 'Economii',
+			name: 'Emergency Fund',
 			type: 'savings',
-			balance: 35000.00,
-			currency: 'RON',
+			balance: 15000.00,
+			currency: 'USD',
 			color: '#8B5CF6',
 			icon: undefined,
 			notes: undefined,
@@ -62,10 +66,10 @@ export function generateDemoAccounts(): Account[] {
 		{
 			id: 3,
 			user_id: 0,
-			name: 'Card Credit',
+			name: 'Rewards Card',
 			type: 'credit_card',
-			balance: -2340.50,
-			currency: 'RON',
+			balance: -1240.75,
+			currency: 'USD',
 			color: '#EF4444',
 			icon: undefined,
 			notes: undefined,
@@ -76,10 +80,10 @@ export function generateDemoAccounts(): Account[] {
 		{
 			id: 4,
 			user_id: 0,
-			name: 'Cash',
+			name: 'Wallet Cash',
 			type: 'cash',
-			balance: 450.00,
-			currency: 'RON',
+			balance: 180.00,
+			currency: 'USD',
 			color: '#F59E0B',
 			icon: undefined,
 			notes: undefined,
@@ -90,10 +94,10 @@ export function generateDemoAccounts(): Account[] {
 		{
 			id: 5,
 			user_id: 0,
-			name: 'Investiții ETF',
+			name: 'Investment Portfolio',
 			type: 'investment',
-			balance: 28500.00,
-			currency: 'EUR',
+			balance: 32500.00,
+			currency: 'USD',
 			color: '#06B6D4',
 			icon: undefined,
 			notes: undefined,
@@ -104,26 +108,26 @@ export function generateDemoAccounts(): Account[] {
 	];
 }
 
-// Demo Categories
+// Demo Categories - Standard budget categories
 export function generateDemoCategories(): Category[] {
 	const expenseCategories = [
-		{ id: 1, name: 'Supermarket', color: '#22C55E', icon: '🛒' },
-		{ id: 2, name: 'Restaurante', color: '#F97316', icon: '🍕' },
-		{ id: 3, name: 'Transport', color: '#3B82F6', icon: '🚗' },
-		{ id: 4, name: 'Utilități', color: '#14B8A6', icon: '💡' },
-		{ id: 5, name: 'Abonamente', color: '#EF4444', icon: '📺' },
-		{ id: 6, name: 'Sănătate', color: '#10B981', icon: '💊' },
-		{ id: 7, name: 'Îmbrăcăminte', color: '#8B5CF6', icon: '👕' },
-		{ id: 8, name: 'Educație', color: '#06B6D4', icon: '📚' },
-		{ id: 9, name: 'Divertisment', color: '#A855F7', icon: '🎬' },
-		{ id: 10, name: 'Altele', color: '#6B7280', icon: '📦' }
+		{ id: 1, name: 'Groceries', color: '#22C55E', icon: '🛒' },
+		{ id: 2, name: 'Dining Out', color: '#F97316', icon: '🍕' },
+		{ id: 3, name: 'Transportation', color: '#3B82F6', icon: '🚗' },
+		{ id: 4, name: 'Utilities', color: '#14B8A6', icon: '💡' },
+		{ id: 5, name: 'Subscriptions', color: '#EF4444', icon: '📺' },
+		{ id: 6, name: 'Healthcare', color: '#10B981', icon: '💊' },
+		{ id: 7, name: 'Shopping', color: '#8B5CF6', icon: '👕' },
+		{ id: 8, name: 'Education', color: '#06B6D4', icon: '📚' },
+		{ id: 9, name: 'Entertainment', color: '#A855F7', icon: '🎬' },
+		{ id: 10, name: 'Miscellaneous', color: '#6B7280', icon: '📦' }
 	];
 
 	const incomeCategories = [
-		{ id: 11, name: 'Salariu', color: '#22C55E', icon: '💰' },
+		{ id: 11, name: 'Salary', color: '#22C55E', icon: '💰' },
 		{ id: 12, name: 'Freelance', color: '#3B82F6', icon: '💻' },
-		{ id: 13, name: 'Dividende', color: '#8B5CF6', icon: '📈' },
-		{ id: 14, name: 'Alte venituri', color: '#F59E0B', icon: '🎁' }
+		{ id: 13, name: 'Investments', color: '#8B5CF6', icon: '📈' },
+		{ id: 14, name: 'Other Income', color: '#F59E0B', icon: '🎁' }
 	];
 
 	return [
@@ -156,17 +160,64 @@ export function generateDemoCategories(): Category[] {
 	];
 }
 
-// Demo Payees
-const demoPayees = [
-	'Kaufland', 'Lidl', 'Carrefour', 'Mega Image', 'Profi',
-	'McDonald\'s', 'KFC', 'Starbucks', 'Dristor Kebap',
-	'OMV', 'Petrom', 'MOL', 'Bolt', 'Uber',
-	'Enel', 'E.ON', 'Digi', 'Orange', 'Vodafone',
-	'Netflix', 'Spotify', 'YouTube Premium', 'HBO Max',
-	'Farmacia Tei', 'Dr. Max', 'Catena',
-	'H&M', 'Zara', 'Reserved', 'Decathlon',
-	'Emag', 'Altex', 'Dedeman', 'IKEA'
-];
+// Fictional Payees - Generic business names
+const demoPayees: Record<string, string[]> = {
+	Groceries: [
+		'Fresh Market', 'Green Basket', 'Daily Mart', 'Corner Store', 
+		'Sunrise Foods', 'Valley Grocers', 'Farm Fresh', 'Quick Stop'
+	],
+	'Dining Out': [
+		'The Golden Fork', 'Blue Moon Cafe', 'Urban Bites', 'Sunset Grill',
+		'Pizza Palace', 'Noodle House', 'Coffee Corner', 'Sweet Treats Bakery'
+	],
+	Transportation: [
+		'City Fuel Station', 'Metro Transit', 'Quick Ride', 'Green Cab',
+		'Auto Service Pro', 'Park & Go', 'Highway Express', 'Bike Share Co'
+	],
+	Utilities: [
+		'Power Grid Co', 'Clear Water Utilities', 'City Gas Services', 
+		'NetConnect ISP', 'Mobile Plus', 'Home Energy', 'TeleCom Services'
+	],
+	Subscriptions: [
+		'StreamFlix', 'MusicFlow', 'CloudStore', 'NewsDaily',
+		'FitLife App', 'GameZone Pro', 'Learning Hub', 'Photo Cloud'
+	],
+	Healthcare: [
+		'City Pharmacy', 'Wellness Clinic', 'Dr. Smith Office', 
+		'MediCare Center', 'HealthFirst', 'Vision Plus', 'Dental Care'
+	],
+	Shopping: [
+		'Style Boutique', 'Tech World', 'Home Essentials', 'Book Nook',
+		'Sports Gear', 'Fashion Hub', 'Gadget Store', 'Outdoor Living'
+	],
+	Education: [
+		'Online Academy', 'Language School', 'Skill Workshop',
+		'University Bookstore', 'Study Supplies', 'Learning Center'
+	],
+	Entertainment: [
+		'Cinema City', 'Fun Zone', 'Concert Hall', 'Game Night',
+		'Art Gallery', 'Museum Pass', 'Theme Park', 'Escape Room'
+	],
+	Miscellaneous: [
+		'General Store', 'Quick Services', 'Local Shop', 'Community Market'
+	]
+};
+
+const incomePayees: Record<string, string[]> = {
+	Salary: ['Acme Corporation', 'Tech Solutions Inc', 'Global Enterprises'],
+	Freelance: ['Design Client', 'Web Project', 'Consulting Gig', 'Creative Work'],
+	Investments: ['Dividend Payment', 'Stock Sale', 'Bond Interest'],
+	'Other Income': ['Gift Received', 'Refund', 'Cashback Reward', 'Side Project']
+};
+
+function getPayeeForCategory(categoryName: string, isIncome: boolean): string {
+	if (isIncome) {
+		const payees = incomePayees[categoryName] || incomePayees['Other Income'];
+		return randomFromArray(payees);
+	}
+	const payees = demoPayees[categoryName] || demoPayees['Miscellaneous'];
+	return randomFromArray(payees);
+}
 
 // Demo Transactions
 export function generateDemoTransactions(days: number = 90): Transaction[] {
@@ -177,38 +228,38 @@ export function generateDemoTransactions(days: number = 90): Transaction[] {
 	let id = 1;
 
 	// Generate regular expenses
-	for (let i = 0; i < 150; i++) {
+	for (let i = 0; i < 120; i++) {
 		const category = randomFromArray(categories.filter(c => c.type === 'expense'));
 		const account = randomFromArray(accounts.filter(a => a.type !== 'investment'));
 		
 		let amount: number;
 		switch (category.name) {
-			case 'Supermarket':
-				amount = -randomBetween(50, 400);
+			case 'Groceries':
+				amount = -randomBetween(25, 180);
 				break;
-			case 'Restaurante':
-				amount = -randomBetween(30, 200);
+			case 'Dining Out':
+				amount = -randomBetween(12, 85);
 				break;
-			case 'Transport':
-				amount = -randomBetween(20, 150);
+			case 'Transportation':
+				amount = -randomBetween(15, 120);
 				break;
-			case 'Utilități':
-				amount = -randomBetween(100, 500);
-				break;
-			case 'Abonamente':
-				amount = -randomBetween(20, 80);
-				break;
-			case 'Sănătate':
-				amount = -randomBetween(50, 300);
-				break;
-			case 'Îmbrăcăminte':
-				amount = -randomBetween(100, 500);
-				break;
-			case 'Divertisment':
+			case 'Utilities':
 				amount = -randomBetween(50, 200);
 				break;
+			case 'Subscriptions':
+				amount = -randomBetween(8, 50);
+				break;
+			case 'Healthcare':
+				amount = -randomBetween(20, 150);
+				break;
+			case 'Shopping':
+				amount = -randomBetween(30, 250);
+				break;
+			case 'Entertainment':
+				amount = -randomBetween(15, 100);
+				break;
 			default:
-				amount = -randomBetween(20, 200);
+				amount = -randomBetween(10, 100);
 		}
 
 		transactions.push({
@@ -219,7 +270,7 @@ export function generateDemoTransactions(days: number = 90): Transaction[] {
 			category_id: category.id,
 			category_name: category.name,
 			category_color: category.color,
-			payee: randomFromArray(demoPayees),
+			payee: getPayeeForCategory(category.name, false),
 			amount,
 			description: '',
 			date: randomDate(days),
@@ -233,19 +284,19 @@ export function generateDemoTransactions(days: number = 90): Transaction[] {
 	for (let month = 0; month < 3; month++) {
 		const date = new Date();
 		date.setMonth(date.getMonth() - month);
-		date.setDate(10); // Salary on 10th
+		date.setDate(15); // Salary on 15th
 
 		transactions.push({
 			id: id++,
 			user_id: 0,
 			account_id: 1,
-			account_name: 'Cont Principal',
+			account_name: 'Primary Checking',
 			category_id: 11,
-			category_name: 'Salariu',
+			category_name: 'Salary',
 			category_color: '#22C55E',
-			payee: 'Angajator SRL',
-			amount: 8500 + randomBetween(-500, 500),
-			description: 'Salariu lunar',
+			payee: 'Acme Corporation',
+			amount: 4200 + randomBetween(-200, 200),
+			description: 'Monthly salary',
 			date: date.toISOString().split('T')[0],
 			cleared: 'cleared',
 			created_at: new Date().toISOString(),
@@ -254,18 +305,18 @@ export function generateDemoTransactions(days: number = 90): Transaction[] {
 	}
 
 	// Generate some freelance income
-	for (let i = 0; i < 5; i++) {
+	for (let i = 0; i < 4; i++) {
 		transactions.push({
 			id: id++,
 			user_id: 0,
 			account_id: 1,
-			account_name: 'Cont Principal',
+			account_name: 'Primary Checking',
 			category_id: 12,
 			category_name: 'Freelance',
 			category_color: '#3B82F6',
-			payee: randomFromArray(['Client Tech', 'Startup ABC', 'Agency XYZ', 'Consulting Pro']),
-			amount: randomBetween(500, 3000),
-			description: 'Proiect freelance',
+			payee: getPayeeForCategory('Freelance', true),
+			amount: randomBetween(200, 1500),
+			description: 'Freelance project',
 			date: randomDate(days),
 			cleared: 'cleared',
 			created_at: new Date().toISOString(),
@@ -300,7 +351,7 @@ export function generateDemoStats() {
 	);
 
 	const totalBalance = accounts
-		.filter(a => a.is_active && a.currency === 'RON')
+		.filter(a => a.is_active)
 		.reduce((sum, a) => sum + a.balance, 0);
 
 	return {

@@ -70,17 +70,6 @@ We use Svelte 5 runes exclusively. No legacy syntax.
 </script>
 ```
 
-### Theming - CSS Variables Only
-Never hardcode colors. Use CSS variables from `layout.css`:
-
-```svelte
-<!-- ✅ Correct -->
-<div class="bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]">
-
-<!-- ❌ Wrong -->
-<div class="bg-slate-800 text-white">
-```
-
 ### TypeScript
 - Always use TypeScript
 - Define types in `src/lib/types.ts`

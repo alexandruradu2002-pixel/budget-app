@@ -147,22 +147,6 @@
 					</svg>
 				</div>
 			</a>
-
-		<!-- Age of Money Card -->
-		<a href="/reports/age-of-money" class="report-card simple-card">
-			<div class="card-header">
-				<div class="card-icon green">
-					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<circle cx="12" cy="12" r="10"/>
-						<path d="M12 6v6l4 2"/>
-					</svg>
-				</div>
-				<span class="card-title">Age Of Money</span>
-				<svg class="card-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-		</a>
 	</div>
 	{/if}
 </div>
@@ -224,10 +208,6 @@
 
 	.card-icon.blue {
 		background-color: var(--color-primary);
-	}
-
-	.card-icon.green {
-		background-color: var(--color-success);
 	}
 
 	.card-icon svg {
