@@ -379,5 +379,3 @@ export async function initializeDatabase() {
 
 // Auto-initialize on import
 initializeDatabase().catch(console.error);
-
-export default db;

@@ -78,6 +78,27 @@ export async function extendSession(sessionId: string): Promise<void> {
 }
 
 // ============================================
+// Cleanup Expired Sessions
+// ============================================
+export async function cleanupExpiredSessions(): Promise<number> {
+	const result = await db.execute({
+		sql: "DELETE FROM sessions WHERE expires_at < datetime('now')",
+		args: []
+	});
+	return Number(result.rowsAffected);
+}
+
+// ============================================
+// Delete All User Sessions (for logout everywhere)
+// ============================================
+export async function deleteAllUserSessions(userId: number): Promise<void> {
+	await db.execute({
+		sql: 'DELETE FROM sessions WHERE user_id = ?',
+		args: [userId]
+	});
+}
+
+// ============================================
 // Cookie Helpers
 // ============================================
 export function setSessionCookie(

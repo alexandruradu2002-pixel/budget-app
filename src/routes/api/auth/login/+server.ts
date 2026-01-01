@@ -2,10 +2,21 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createSession, setSessionCookie } from '$lib/server/auth';
+import { authRateLimiter, checkRateLimit } from '$lib/server/rate-limit';
+import { logSecurity } from '$lib/server/logger';
 import { env } from '$env/dynamic/private';
 import db from '$lib/server/db';
 
 export const POST: RequestHandler = async (event) => {
+	// Rate limiting - prevent brute force attacks
+	const rateLimited = checkRateLimit(event, authRateLimiter);
+	if (rateLimited) {
+		logSecurity('Rate limit exceeded on login', {
+			ip: event.getClientAddress()
+		});
+		return rateLimited;
+	}
+
 	const { password } = await event.request.json();
 
 	// Get APP_PASSWORD from environment variable
@@ -18,6 +29,9 @@ export const POST: RequestHandler = async (event) => {
 
 	// Verify password
 	if (password !== appPassword) {
+		logSecurity('Failed login attempt', {
+			ip: event.getClientAddress()
+		});
 		return json({ error: 'Invalid password' }, { status: 401 });
 	}
 
