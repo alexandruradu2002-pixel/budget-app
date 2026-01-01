@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Account } from '$lib/types';
+	import { browser } from '$app/environment';
 	import { LoadingState, PageHeader, HeaderButton, AccountModal } from '$lib/components';
 	import { formatWithCurrency, getCurrencySymbol } from '$lib/utils/format';
 	import { EXCHANGE_RATES_TO_RON } from '$lib/constants';
@@ -168,7 +169,9 @@
 				return;
 			}
 
-			const response = await fetch('/api/accounts?includeInactive=true');
+			// Add cache-busting timestamp to ensure fresh data
+			const cacheBust = `_t=${Date.now()}`;
+			const response = await fetch(`/api/accounts?includeInactive=true&${cacheBust}`);
 			if (response.ok) {
 				const data = await response.json();
 				const allAccounts = data.accounts || [];
@@ -193,19 +196,19 @@
 		}
 	}
 
-	// Track last known update counter to detect external changes
-	let lastUpdateCounter = $state(0);
+	// Track last known update counter to detect changes
+	let lastUpdateCounter = $state(-1);
 
+	// Single unified effect for loading data - only runs on client to avoid SSR issues
 	$effect(() => {
-		loadAccounts();
-	});
-
-	// React to transaction changes from other pages (e.g., TransactionModal)
-	$effect(() => {
+		// Skip during SSR to prevent hydration mismatches
+		if (!browser) return;
+		
 		const currentCounter = transactionStore.updateCounter;
-		if (currentCounter > lastUpdateCounter) {
+		
+		if (currentCounter !== lastUpdateCounter) {
+			console.log('[Accounts] Loading data - counter:', currentCounter);
 			lastUpdateCounter = currentCounter;
-			// Reload accounts when transactions change (balances may have changed)
 			loadAccounts();
 		}
 	});

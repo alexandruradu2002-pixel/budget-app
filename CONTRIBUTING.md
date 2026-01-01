@@ -25,14 +25,45 @@ Feature suggestions are welcome! Please:
 
 ### Pull Requests
 
-1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/YOUR_USERNAME/budget_app.git`
+> **Note**: Direct commits to `main` are disabled. All changes must go through Pull Requests.
+
+#### Branch Naming Convention
+- `feature/` - New features (e.g., `feature/add-dark-mode`)
+- `fix/` - Bug fixes (e.g., `fix/transaction-validation`)
+- `docs/` - Documentation changes (e.g., `docs/update-readme`)
+- `refactor/` - Code refactoring (e.g., `refactor/api-helpers`)
+
+#### Workflow
+
+1. **Fork** the repository (external contributors) or **create a branch** (maintainers)
+2. **Clone** (if forked): `git clone https://github.com/YOUR_USERNAME/budget_app.git`
 3. **Create a branch**: `git checkout -b feature/amazing-feature`
 4. **Make changes** following our code style
-5. **Test** your changes
-6. **Commit**: `git commit -m 'Add amazing feature'`
+5. **Test** your changes:
+   ```bash
+   npm run check    # Type checking
+   npm run build    # Build test
+   ```
+6. **Commit** with clear messages:
+   ```bash
+   git add .
+   git commit -m "feat: add amazing feature"
+   ```
+   Follow [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat:` - New features
+   - `fix:` - Bug fixes
+   - `docs:` - Documentation
+   - `refactor:` - Code refactoring
+   - `style:` - Formatting changes
+   - `test:` - Adding tests
 7. **Push**: `git push origin feature/amazing-feature`
-8. **Open a Pull Request**
+8. **Open a Pull Request** on GitHub with:
+   - Clear title describing the change
+   - Description of what changed and why
+   - Reference any related issues (e.g., "Fixes #123")
+   - Screenshots if UI changes
+9. **Address review feedback** if requested
+10. **Squash and merge** once approved
 
 ## Development Setup
 

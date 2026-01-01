@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { LoadingState, PageHeader, HeaderButton, WorkInProgress } from '$lib/components';
 	import { formatCurrency, formatMonthYear } from '$lib/utils/format';
 	import { offlineStore, toast, transactionStore } from '$lib/stores';
@@ -16,8 +17,9 @@
 
 	async function loadDashboard() {
 		try {
-			// Try online first
-			const response = await fetch('/api/dashboard', { credentials: 'include' });
+			// Try online first - add cache-busting timestamp
+			const cacheBust = `_t=${Date.now()}`;
+			const response = await fetch(`/api/dashboard?${cacheBust}`, { credentials: 'include' });
 			if (response.ok) {
 				stats = await response.json();
 			} else if (!offlineStore.isOnline) {
@@ -82,19 +84,19 @@
 		}
 	}
 
-	// Track last known update counter to detect external changes
-	let lastUpdateCounter = $state(0);
+	// Track last known update counter to detect changes
+	let lastUpdateCounter = $state(-1);
 
+	// Single unified effect for loading data - only runs on client to avoid SSR issues
 	$effect(() => {
-		loadDashboard();
-	});
-
-	// React to transaction changes from other pages (e.g., TransactionModal)
-	$effect(() => {
+		// Skip during SSR to prevent hydration mismatches
+		if (!browser) return;
+		
 		const currentCounter = transactionStore.updateCounter;
-		if (currentCounter > lastUpdateCounter) {
+		
+		if (currentCounter !== lastUpdateCounter) {
+			console.log('[Dashboard] Loading data - counter:', currentCounter);
 			lastUpdateCounter = currentCounter;
-			// Reload dashboard when transactions change
 			loadDashboard();
 		}
 	});

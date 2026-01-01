@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import type { Transaction, Category } from '$lib/types';
 	import { LoadingState, EmptyState, TransactionModal, FloatingActionButton } from '$lib/components';
@@ -287,12 +288,15 @@
 	// Track last known update counter to detect external changes
 	let lastUpdateCounter = $state(0);
 
+	// Load data when categoryId changes - only on client
 	$effect(() => {
-		if (categoryId) loadData();
+		if (browser && categoryId) loadData();
 	});
 
 	// React to transaction changes from other pages (e.g., TransactionModal)
 	$effect(() => {
+		if (!browser) return;
+		
 		const currentCounter = transactionStore.updateCounter;
 		if (currentCounter > lastUpdateCounter) {
 			lastUpdateCounter = currentCounter;

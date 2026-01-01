@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import type { Transaction, Account, Category } from '$lib/types';
 	import { TransactionModal, LoadingState, EmptyState, FloatingActionButton } from '$lib/components';
 	import { formatDateWithDay, formatWithCurrency as formatWithCurrencyUtil, formatCurrency } from '$lib/utils/format';
@@ -195,12 +196,15 @@
 	// Track last known update counter to detect external changes
 	let lastUpdateCounter = $state(0);
 
+	// Load data when accountId changes - only on client
 	$effect(() => { 
-		if (accountId) loadData(); 
+		if (browser && accountId) loadData(); 
 	});
 
 	// React to transaction changes from other pages (e.g., TransactionModal)
 	$effect(() => {
+		if (!browser) return;
+		
 		const currentCounter = transactionStore.updateCounter;
 		if (currentCounter > lastUpdateCounter) {
 			lastUpdateCounter = currentCounter;

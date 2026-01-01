@@ -1,19 +1,20 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { offlineStore } from '$lib/stores';
 
 	let showSyncDetails = $state(false);
 
-	// Reactive values from store
-	let isOnline = $derived(offlineStore.isOnline);
-	let isSyncing = $derived(offlineStore.isSyncing);
-	let pendingChanges = $derived(offlineStore.pendingChanges);
+	// Reactive values from store - only access on client to avoid SSR mismatch
+	let isOnline = $derived(browser ? offlineStore.isOnline : true);
+	let isSyncing = $derived(browser ? offlineStore.isSyncing : false);
+	let pendingChanges = $derived(browser ? offlineStore.pendingChanges : 0);
 
 	function handleSync() {
 		offlineStore.syncPendingChanges();
 	}
 </script>
 
-{#if !isOnline || pendingChanges > 0}
+{#if browser && (!isOnline || pendingChanges > 0)}
 	<div class="offline-indicator" class:offline={!isOnline} class:syncing={isSyncing}>
 		<button
 			class="indicator-content"
