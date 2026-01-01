@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import type { CategoryGroup, Account, Category, CategoryBudget, Transaction } from '$lib/types';
 	import type { CurrencyValue } from '$lib/constants';
 	import { TransactionModal, LoadingState, PageHeader, HeaderButton, FloatingActionButton } from '$lib/components';
@@ -11,9 +12,9 @@
 	const HIDDEN_GROUP = 'Hidden';
 	const PLAN_RANGE_STORAGE_KEY = 'plan-custom-range';
 
-	// Initialize currency store from localStorage
+	// Initialize currency store from localStorage - only on client
 	$effect(() => {
-		currencyStore.init();
+		if (browser) currencyStore.init();
 	});
 
 	// Custom range type
@@ -67,8 +68,10 @@
 	let rangeEndCalendarYear = $state(new Date().getFullYear());
 	let rangeInitialized = $state(false);
 
-	// Initialize from localStorage on mount
+	// Initialize from localStorage on mount - only on client
 	$effect(() => {
+		if (!browser) return;
+		
 		const saved = loadSavedRange();
 		if (saved) {
 			rangeMode = saved.mode;
@@ -82,6 +85,10 @@
 				rangeStartCalendarMonth = startParts[1] - 1;
 				rangeEndCalendarYear = endParts[0];
 				rangeEndCalendarMonth = endParts[1] - 1;
+			} else if (saved.mode === 'single' && saved.startMonth !== undefined && saved.startYear !== undefined) {
+				// Restore single month mode - set currentDate to the saved month/year
+				currentDate = new Date(saved.startYear, saved.startMonth, 1);
+				pickerYear = saved.startYear;
 			}
 		}
 		rangeInitialized = true;
@@ -345,11 +352,13 @@
 			}
 
 			// Fetch categories, transactions, accounts, and groups in parallel
+			// Add cache-busting timestamp to ensure fresh data
+			const cacheBust = `_t=${Date.now()}`;
 			const [catRes, transRes, accountsRes, groupsRes] = await Promise.all([
-				fetch('/api/categories?includeTargets=true'),
-				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000`),
-				fetch('/api/accounts'),
-				fetch('/api/category-groups')
+				fetch(`/api/categories?includeTargets=true&${cacheBust}`),
+				fetch(`/api/transactions?startDate=${startDate}&endDate=${endDate}&limit=1000&${cacheBust}`),
+				fetch(`/api/accounts?${cacheBust}`),
+				fetch(`/api/category-groups?${cacheBust}`)
 			]);
 
 			if (!catRes.ok) throw new Error('Failed to load categories');
@@ -372,6 +381,7 @@
 			if (transRes.ok) {
 				const transData = await transRes.json();
 				transactions = transData.transactions || [];
+				console.log('[Plan] Loaded transactions:', transactions.length, 'items');
 			}
 			
 			// Build account currency map
@@ -516,7 +526,7 @@
 
 	async function handleSaveTransaction(payload: any) {
 		try {
-			console.log('Sending payload to API:', payload);
+			console.log('[Plan] Sending payload to API:', payload);
 			const res = await fetch('/api/transactions', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -524,13 +534,17 @@
 			});
 			if (!res.ok) {
 				const errorData = await res.json().catch(() => ({}));
-				console.error('API Error:', res.status, errorData);
+				console.error('[Plan] API Error:', res.status, errorData);
 				throw new Error(errorData.message || 'Failed to save');
 			}
+			const result = await res.json();
+			console.log('[Plan] Transaction saved successfully:', result);
 			// Reload categories to update spent amounts
+			console.log('[Plan] Reloading categories after save...');
 			await loadCategories();
+			console.log('[Plan] Categories reloaded');
 		} catch (e) {
-			console.error('Failed to save transaction:', e);
+			console.error('[Plan] Failed to save transaction:', e);
 		}
 	}
 
@@ -704,29 +718,41 @@
 		pickerYear = pickerYear + 1;
 	}
 
-	// Reload data when month/range changes or initialization completes
+	// Track last known update counter and date/mode to detect changes
+	let lastUpdateCounter = $state(-1);
+	let lastDateKey = $state('');
+	let lastRangeMode = $state('');
+
+	// Single unified effect for loading data - reacts to date changes AND transaction changes
+	// Only runs on client to avoid SSR issues
 	$effect(() => {
+		// Skip during SSR to prevent hydration mismatches
+		if (!browser) return;
+		
 		// Wait for initialization to complete
 		if (!rangeInitialized) return;
 		
-		// Track currentDate for single mode
-		const _ = currentDate.getTime();
-		// Track range mode to ensure we reload on mode change
-		const __ = rangeMode;
-		
-		loadCategories();
-	});
-
-	// Track last known update counter to detect external changes
-	let lastUpdateCounter = $state(0);
-
-	// React to transaction changes from other pages (e.g., TransactionModal)
-	$effect(() => {
+		// Read all reactive dependencies
 		const currentCounter = transactionStore.updateCounter;
-		if (currentCounter > lastUpdateCounter) {
+		const dateKey = rangeMode === 'custom' 
+			? `${customStartDate}-${customEndDate}` 
+			: `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+		const currentRangeMode = rangeMode;
+		
+		// Check what changed
+		const counterChanged = currentCounter !== lastUpdateCounter;
+		const dateChanged = dateKey !== lastDateKey;
+		const modeChanged = currentRangeMode !== lastRangeMode;
+		
+		if (counterChanged || dateChanged || modeChanged) {
+			console.log('[Plan] Loading data - counter:', currentCounter, 'dateKey:', dateKey, 'mode:', currentRangeMode);
+			
+			// Update tracked values AFTER checking but BEFORE loading
 			lastUpdateCounter = currentCounter;
-			// Reload categories when transactions change
-			if (rangeInitialized) loadCategories();
+			lastDateKey = dateKey;
+			lastRangeMode = currentRangeMode;
+			
+			loadCategories();
 		}
 	});
 </script>

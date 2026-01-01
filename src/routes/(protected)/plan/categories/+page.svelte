@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import type { Category } from '$lib/types';
 	import { LoadingState, PageHeader, HeaderButton, Alert } from '$lib/components';
 	import { toast, cacheStore } from '$lib/stores';
@@ -409,9 +410,9 @@
 		saveGroupOrder(newGroups.map(g => g.name));
 	}
 
-	// Initialize
+	// Initialize - only on client to avoid SSR issues
 	$effect(() => {
-		loadCategories();
+		if (browser) loadCategories();
 	});
 </script>
 

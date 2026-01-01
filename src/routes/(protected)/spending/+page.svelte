@@ -4,6 +4,7 @@
 	import { formatDateWithDay, formatAmountWithCurrency as formatAmountUtil } from '$lib/utils/format';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { offlineStore, toast, transactionStore } from '$lib/stores';
 
 	// Transaction payload type for save operations
@@ -311,11 +312,13 @@
 			// Build query params for transactions
 			const searchParam = initialSearch ? `&search=${encodeURIComponent(initialSearch)}` : '';
 			const categoryParam = initialCategoryId ? `&categoryId=${initialCategoryId}` : '';
+			// Add cache-busting timestamp to ensure fresh data
+			const cacheBust = `_t=${Date.now()}`;
 			
 			const [txRes, accRes, catRes] = await Promise.all([
-				fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}${categoryParam}`),
-				fetch('/api/accounts'),
-				fetch('/api/categories')
+				fetch(`/api/transactions?limit=${PAGE_SIZE}&offset=0${searchParam}${categoryParam}&${cacheBust}`),
+				fetch(`/api/accounts?${cacheBust}`),
+				fetch(`/api/categories?${cacheBust}`)
 			]);
 			if (txRes.ok) {
 				const data = await txRes.json();
@@ -501,34 +504,44 @@
 		}
 	}
 
-	// Track last known update counter to detect external changes
-	let lastUpdateCounter = $state(0);
+	// Track last known state to detect changes
+	let lastUpdateCounter = $state(-1);
+	let lastUrlKey = $state('');
 
-	// Initialize from URL params on mount
+	// Single unified effect for loading data - only runs on client to avoid SSR issues
 	$effect(() => {
+		// Skip during SSR to prevent hydration mismatches
+		if (!browser) return;
+		
+		// Read all reactive dependencies
+		const currentCounter = transactionStore.updateCounter;
 		const urlParams = $page.url.searchParams;
+		const urlKey = urlParams.toString();
+		
 		const initialSearch = urlParams.get('search') || '';
 		const initialCategoryId = urlParams.get('category') ? parseInt(urlParams.get('category')!) : null;
 		
-		// Set initial state
-		searchQuery = initialSearch;
-		selectedCategoryFilter = initialCategoryId;
+		// Check what changed
+		const counterChanged = currentCounter !== lastUpdateCounter;
+		const urlChanged = urlKey !== lastUrlKey;
 		
-		// Show search bar if there are filters
-		if (initialSearch || initialCategoryId !== null) {
-			showSearch = true;
-		}
-		
-		loadData(initialSearch, initialCategoryId);
-	});
-
-	// React to transaction changes from other pages (e.g., TransactionModal)
-	$effect(() => {
-		const currentCounter = transactionStore.updateCounter;
-		if (currentCounter > lastUpdateCounter) {
+		if (counterChanged || urlChanged) {
+			console.log('[Spending] Loading data - counter:', currentCounter, 'url:', urlKey);
+			
+			// Update tracked values
 			lastUpdateCounter = currentCounter;
-			// Reload data when transactions change
-			loadData(searchQuery, selectedCategoryFilter);
+			lastUrlKey = urlKey;
+			
+			// Set initial state
+			searchQuery = initialSearch;
+			selectedCategoryFilter = initialCategoryId;
+			
+			// Show search bar if there are filters
+			if (initialSearch || initialCategoryId !== null) {
+				showSearch = true;
+			}
+			
+			loadData(initialSearch, initialCategoryId);
 		}
 	});
 </script>
