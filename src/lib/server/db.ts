@@ -68,6 +68,25 @@ export async function initializeDatabase() {
 		// Column already exists, ignore error
 	}
 
+	// Add password_salt column if it doesn't exist (migration for password auth fallback)
+	try {
+		await db.execute(`ALTER TABLE users ADD COLUMN password_salt TEXT`);
+	} catch {
+		// Column already exists, ignore error
+	}
+
+	// Password reset tokens table
+	await db.execute(`
+		CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL,
+			token TEXT UNIQUE NOT NULL,
+			expires_at DATETIME NOT NULL,
+			used INTEGER DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`);
+
 	// Sessions table
 	await db.execute(`
 		CREATE TABLE IF NOT EXISTS sessions (

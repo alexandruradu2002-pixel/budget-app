@@ -96,11 +96,11 @@ export function createRateLimiter(options: RateLimitOptions) {
 
 /**
  * Auth endpoints - strict (protecție brute force)
- * 5 încercări per 15 minute
+ * 15 încercări per 15 minute
  */
 export const authRateLimiter = createRateLimiter({
 	windowMs: 15 * 60 * 1000, // 15 minute
-	maxRequests: 5
+	maxRequests: 15
 });
 
 /**

@@ -3,12 +3,17 @@ import {
 	CURRENCY_SYMBOLS, 
 	DEFAULT_CURRENCY, 
 	EXCHANGE_RATES_TO_RON,
+	ALL_CURRENCY_SYMBOLS,
 	type CurrencyValue 
 } from '$lib/constants';
 
 const RATES_CACHE_KEY = 'exchangeRates';
 const RATES_TIMESTAMP_KEY = 'exchangeRatesTimestamp';
+const TRANSACTION_CURRENCIES_KEY = 'transactionCurrencies';
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Default transaction currencies
+const DEFAULT_TRANSACTION_CURRENCIES = ['RON', 'EUR'];
 
 interface CachedRates {
 	rates: Record<string, number>;
@@ -16,10 +21,12 @@ interface CachedRates {
 }
 
 function createCurrencyStore() {
-	let mainCurrency = $state<CurrencyValue>(DEFAULT_CURRENCY);
+	let mainCurrency = $state<string>(DEFAULT_CURRENCY);
 	let exchangeRates = $state<Record<string, number>>(EXCHANGE_RATES_TO_RON);
 	let lastUpdated = $state<number | null>(null);
 	let isLoading = $state(false);
+	// Currencies to display in TransactionModal (user configurable - can be any currency)
+	let transactionCurrencies = $state<string[]>([...DEFAULT_TRANSACTION_CURRENCIES]);
 
 	function getCachedRates(): CachedRates | null {
 		if (typeof window === 'undefined') return null;
@@ -86,7 +93,7 @@ function createCurrencyStore() {
 			return mainCurrency;
 		},
 		get symbol() {
-			return CURRENCY_SYMBOLS[mainCurrency];
+			return ALL_CURRENCY_SYMBOLS[mainCurrency] || mainCurrency;
 		},
 		get rates() {
 			return exchangeRates;
@@ -97,24 +104,85 @@ function createCurrencyStore() {
 		get isLoading() {
 			return isLoading;
 		},
-		set(currency: CurrencyValue) {
+		get transactionCurrencies() {
+			return transactionCurrencies;
+		},
+		set(currency: string) {
 			mainCurrency = currency;
 			// Persist to localStorage
 			if (typeof window !== 'undefined') {
 				localStorage.setItem('mainCurrency', currency);
 			}
 		},
+		setTransactionCurrencies(currencies: string[]) {
+			// Ensure at least one currency is selected
+			if (currencies.length === 0) {
+				currencies = [DEFAULT_CURRENCY];
+			}
+			transactionCurrencies = currencies;
+			// Persist to localStorage
+			if (typeof window !== 'undefined') {
+				localStorage.setItem(TRANSACTION_CURRENCIES_KEY, JSON.stringify(currencies));
+			}
+		},
+		addTransactionCurrency(currency: string) {
+			if (!transactionCurrencies.includes(currency)) {
+				transactionCurrencies = [...transactionCurrencies, currency];
+				if (typeof window !== 'undefined') {
+					localStorage.setItem(TRANSACTION_CURRENCIES_KEY, JSON.stringify(transactionCurrencies));
+				}
+			}
+		},
+		removeTransactionCurrency(currency: string) {
+			// Don't allow removing the last currency
+			if (transactionCurrencies.length <= 1) return;
+			transactionCurrencies = transactionCurrencies.filter(c => c !== currency);
+			if (typeof window !== 'undefined') {
+				localStorage.setItem(TRANSACTION_CURRENCIES_KEY, JSON.stringify(transactionCurrencies));
+			}
+		},
+		toggleTransactionCurrency(currency: string) {
+			const index = transactionCurrencies.indexOf(currency);
+			if (index === -1) {
+				// Add currency
+				transactionCurrencies = [...transactionCurrencies, currency];
+			} else if (transactionCurrencies.length > 1) {
+				// Remove currency (only if not the last one)
+				transactionCurrencies = transactionCurrencies.filter(c => c !== currency);
+			}
+			// Persist to localStorage
+			if (typeof window !== 'undefined') {
+				localStorage.setItem(TRANSACTION_CURRENCIES_KEY, JSON.stringify(transactionCurrencies));
+			}
+		},
 		toggle() {
-			const currentIndex = SUPPORTED_CURRENCIES.indexOf(mainCurrency);
+			const currentIndex = SUPPORTED_CURRENCIES.indexOf(mainCurrency as CurrencyValue);
 			const nextIndex = (currentIndex + 1) % SUPPORTED_CURRENCIES.length;
 			this.set(SUPPORTED_CURRENCIES[nextIndex]);
 		},
 		async init() {
 			// Load currency preference from localStorage
 			if (typeof window !== 'undefined') {
-				const saved = localStorage.getItem('mainCurrency') as CurrencyValue | null;
-				if (saved && SUPPORTED_CURRENCIES.includes(saved)) {
+				const saved = localStorage.getItem('mainCurrency');
+				if (saved && typeof saved === 'string' && saved.length > 0) {
 					mainCurrency = saved;
+				}
+				
+				// Load transaction currencies from localStorage
+				const savedTransactionCurrencies = localStorage.getItem(TRANSACTION_CURRENCIES_KEY);
+				if (savedTransactionCurrencies) {
+					try {
+						const parsed = JSON.parse(savedTransactionCurrencies) as string[];
+						// Accept any currency string that's in ALL_CURRENCY_SYMBOLS or rates
+						const validCurrencies = parsed.filter(c => 
+							typeof c === 'string' && c.length > 0
+						);
+						if (validCurrencies.length > 0) {
+							transactionCurrencies = validCurrencies;
+						}
+					} catch {
+						// Keep default currencies
+					}
 				}
 			}
 			

@@ -111,6 +111,12 @@ function createThemeStore() {
 
 	// Load theme from server (database)
 	async function loadFromServer() {
+		// Skip if on login/public pages (no session)
+		const publicPaths = ['/login', '/demo', '/setup', '/'];
+		if (typeof window !== 'undefined' && publicPaths.some(p => window.location.pathname === p || window.location.pathname.startsWith('/login'))) {
+			return;
+		}
+		
 		loading = true;
 		try {
 			const response = await fetch('/api/user/settings');
