@@ -18,7 +18,7 @@ const isDemoMode = env.DEMO_MODE === 'true';
 // Check if demo access is allowed (for private instances, set ALLOW_DEMO=true to enable)
 const allowDemo = env.ALLOW_DEMO === 'true';
 
-// Check if app is configured (password set)
+// Check if app is configured (password set OR email service available)
 async function checkAppConfigured(): Promise<boolean> {
 	// Use cached value if available
 	if (isAppConfigured !== null) {
@@ -39,6 +39,12 @@ async function checkAppConfigured(): Promise<boolean> {
 		
 		// Fallback: check APP_PASSWORD environment variable
 		if (env.APP_PASSWORD) {
+			isAppConfigured = true;
+			return true;
+		}
+		
+		// If Resend is configured, app is ready (uses magic links instead of password)
+		if (env.RESEND_API_KEY) {
 			isAppConfigured = true;
 			return true;
 		}

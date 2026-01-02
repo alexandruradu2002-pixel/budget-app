@@ -24,7 +24,7 @@ Try the app with sample data: [**Live Demo**](https://budget-app-azure-eight.ver
 
 ## 🚀 Installation
 
-- [Installation Guide](INSTALLATION_GUIDE.md) - Deploying Budget App
+[Installation Guide](INSTALLATION_GUIDE.md) - Deploying Budget App
   
 ## 🤝 Contributing
 

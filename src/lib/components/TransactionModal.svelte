@@ -8,8 +8,7 @@
 		type GeolocationPosition 
 	} from '$lib/utils/geolocation';
 	import { getCurrencySymbol } from '$lib/utils/format';
-	import { SUPPORTED_CURRENCIES } from '$lib/constants';
-	import { keyboardStore, transactionStore } from '$lib/stores';
+	import { keyboardStore, transactionStore, currencyStore } from '$lib/stores';
 	import { pushState, replaceState } from '$app/navigation';
 	import PayeeSelector, { isTransferPayee, getTransferTargetAccountName, TRANSFER_PAYEE_PREFIX } from './PayeeSelector.svelte';
 	import CategorySelector from './CategorySelector.svelte';
@@ -450,6 +449,19 @@
 		return getCurrencySymbol(accountCurrencyCode());
 	});
 
+	// Get currencies to display in dropdown (configured currencies + account currency if not included)
+	let displayableCurrencies = $derived(() => {
+		const configured = currencyStore.transactionCurrencies;
+		const accountCurr = accountCurrencyCode();
+		// Always include account currency, put it first if not already in the list
+		if (!configured.includes(accountCurr as typeof configured[number])) {
+			return [accountCurr, ...configured];
+		}
+		// Reorder to put account currency first
+		const others = configured.filter(c => c !== accountCurr);
+		return [accountCurr, ...others];
+	});
+
 	// Get the active transaction currency (override or account currency)
 	let activeTransactionCurrency = $derived(() => {
 		return transactionCurrency || accountCurrencyCode();
@@ -829,7 +841,7 @@
 				{#if showCurrencyDropdown}
 					<div class="currency-dropdown-overlay" onclick={() => showCurrencyDropdown = false} role="presentation"></div>
 					<div class="currency-dropdown">
-						{#each SUPPORTED_CURRENCIES as currency}
+						{#each displayableCurrencies() as currency}
 							<button
 								type="button"
 								class="currency-option"

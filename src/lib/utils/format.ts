@@ -55,7 +55,7 @@ export function formatAmountWithCurrency(amount: number, currency: string): stri
  * No decimals, uses floor rounding
  */
 export function formatCurrency(amount: number, currency?: CurrencyValue): string {
-	const curr = currency || currencyStore.value;
+	const curr = (currency || currencyStore.value) as CurrencyValue;
 	const symbol = CURRENCY_SYMBOLS[curr];
 	const floored = Math.floor(amount);
 	
@@ -73,7 +73,7 @@ export function formatCurrency(amount: number, currency?: CurrencyValue): string
  * No decimals, uses floor rounding
  */
 export function formatCurrencyWithSign(amount: number, currency?: CurrencyValue): string {
-	const curr = currency || currencyStore.value;
+	const curr = (currency || currencyStore.value) as CurrencyValue;
 	const symbol = CURRENCY_SYMBOLS[curr];
 	const floored = Math.floor(Math.abs(amount));
 	const formatted = floored.toLocaleString('ro-RO');
@@ -93,7 +93,7 @@ export function formatCurrencyWithSign(amount: number, currency?: CurrencyValue)
  * No decimals, uses floor rounding
  */
 export function formatAmount(amount: number, currency?: CurrencyValue): string {
-	const curr = currency || currencyStore.value;
+	const curr = (currency || currencyStore.value) as CurrencyValue;
 	const symbol = CURRENCY_SYMBOLS[curr];
 	const floored = Math.floor(Math.abs(amount));
 	const formatted = floored.toLocaleString('ro-RO');

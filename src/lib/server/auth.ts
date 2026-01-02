@@ -12,7 +12,10 @@ const MAGIC_LINK_EXPIRY_MINUTES = 15;
 // ============================================
 // User Cap for Hosted Instances
 // ============================================
-const DEFAULT_USER_CAP = 50; // Free tier limit
+// Personal use: 5 users (you + family/friends)
+// Vercel Hobby plan has no specific user limits, but keeping it small
+// for a personal budgeting app makes sense
+const DEFAULT_USER_CAP = 5;
 
 export function getUserCap(): number {
 	const cap = env.USER_CAP;

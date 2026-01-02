@@ -2,7 +2,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createAuthToken, getUserCap, getCurrentUserCount, canCreateNewUser } from '$lib/server/auth';
-import { sendMagicLinkEmail, isEmailConfigured } from '$lib/server/email';
+import { sendMagicLinkEmail, isEmailConfigured, isEmailLimitReached, getEmailStats } from '$lib/server/email';
 import { authRateLimiter, checkRateLimit } from '$lib/server/rate-limit';
 import { logSecurity } from '$lib/server/logger';
 import db from '$lib/server/db';
@@ -38,6 +38,38 @@ export const POST: RequestHandler = async (event) => {
 		email = parsed.email.toLowerCase();
 	} catch {
 		return json({ error: 'Invalid email address' }, { status: 400 });
+	}
+
+	// Check if daily email limit is reached - fallback to password auth
+	if (isEmailLimitReached()) {
+		const stats = getEmailStats();
+		logSecurity('Email limit reached - switching to password auth', {
+			email,
+			emailsSent: stats.sent,
+			limit: stats.limit,
+			ip: event.getClientAddress()
+		});
+		
+		// Check if user exists and has password set
+		const userCheck = await db.execute({
+			sql: 'SELECT id, password_hash, password_salt FROM users WHERE email = ?',
+			args: [email]
+		});
+		
+		const hasPassword = userCheck.rows.length > 0 && 
+			userCheck.rows[0].password_hash && 
+			userCheck.rows[0].password_hash !== '' &&
+			userCheck.rows[0].password_salt;
+		
+		return json({
+			error: 'Daily email limit reached',
+			message: hasPassword 
+				? 'Email limit reached. Please use your password to sign in.'
+				: 'Email limit reached. Please set a password to continue.',
+			emailLimitReached: true,
+			hasPassword,
+			email
+		}, { status: 503 });
 	}
 
 	// Check if this email already has a user
