@@ -26,11 +26,11 @@ Public app (user cap of 5 currently): [**Public App**](https://budget-app-azure-
 
 ## 🚀 Installation
 
-[Installation Guide](INSTALLATION_GUIDE.md) - Deploying Budget App
+[Installation Guide](docs/INSTALLATION_GUIDE.md) - Deploying Budget App
   
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
+Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) first.
 
 ## 💖 Support
 

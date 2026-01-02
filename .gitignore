@@ -45,6 +45,9 @@ Thumbs.db
 *.swo
 *~
 
+# Personal data backups (should not be in repo)
+Backup/
+
 # GitHub - keep important files
 .github/*
 !.github/copilot-instructions.md
