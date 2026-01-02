@@ -18,9 +18,10 @@ Self-hosted, open source, privacy-first. Your data stays with you.
 - 🔐 **Self-Hosted** - Your data stays on your own database
 - 📥 **YNAB Import** - Migrate from You Need A Budget
 
-## 📸 Demo
+## 📸 Links
 
 Try the app with sample data: [**Live Demo**](https://budget-app-azure-eight.vercel.app/demo)
+Public app (user cap of 5 currently): [**Public App**](https://budget-app-azure-eight.vercel.app)
 
 ## 🚀 Installation
 
