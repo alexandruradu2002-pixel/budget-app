@@ -21,6 +21,7 @@ Self-hosted, open source, privacy-first. Your data stays with you.
 ## 📸 Links
 
 Try the app with sample data: [**Live Demo**](https://budget-app-azure-eight.vercel.app/demo)
+
 Public app (user cap of 5 currently): [**Public App**](https://budget-app-azure-eight.vercel.app)
 
 ## 🚀 Installation
