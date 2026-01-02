@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { SettingsSection } from '$lib/components';
 	import { CURRENCY_SYMBOLS, SUPPORTED_CURRENCIES, ALL_CURRENCY_SYMBOLS, type CurrencyValue } from '$lib/constants';
-	import { currencyStore } from '$lib/stores';
+	import { currencyStore, userStore } from '$lib/stores';
 
 	let { disabled = false }: { disabled?: boolean } = $props();
 
@@ -143,6 +143,7 @@
 				type="button"
 				class="currency-toggle" 
 				onclick={(e) => { e.stopPropagation(); showMainCurrencyDropdown = !showMainCurrencyDropdown; }}
+				disabled={userStore.isDemo}
 			>
 				<span class="currency-code">{currencyStore.value}</span>
 				<span class="currency-symbol">{getCurrencySymbol(currencyStore.value)}</span>
@@ -159,9 +160,12 @@
 							class="currency-dropdown-option"
 							class:active={currencyStore.value === currency}
 							onclick={() => {
-								currencyStore.set(currency);
-								showMainCurrencyDropdown = false;
+								if (!userStore.isDemo) {
+									currencyStore.set(currency);
+									showMainCurrencyDropdown = false;
+								}
 							}}
+							disabled={userStore.isDemo}
 						>
 							<span class="option-code">{currency}</span>
 							<span class="option-symbol">{getCurrencySymbol(currency)}</span>
@@ -192,8 +196,9 @@
 						<button
 							type="button"
 							class="chip-remove"
-							onclick={() => currencyStore.removeTransactionCurrency(currency)}
+							onclick={() => !userStore.isDemo && currencyStore.removeTransactionCurrency(currency)}
 							title={`Remove ${currency}`}
+							disabled={userStore.isDemo}
 						>
 							<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
@@ -210,6 +215,7 @@
 					class="add-currency-btn"
 					onclick={(e) => { e.stopPropagation(); showAddCurrencyDropdown = !showAddCurrencyDropdown; }}
 					title="Add currency"
+					disabled={userStore.isDemo}
 				>
 					<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -224,9 +230,12 @@
 								type="button"
 								class="add-currency-option"
 								onclick={() => {
-									currencyStore.addTransactionCurrency(currency);
-									showAddCurrencyDropdown = false;
+									if (!userStore.isDemo) {
+										currencyStore.addTransactionCurrency(currency);
+										showAddCurrencyDropdown = false;
+									}
 								}}
+								disabled={userStore.isDemo}
 							>
 								<span class="option-code">{currency}</span>
 								<span class="option-symbol">{getCurrencySymbol(currency)}</span>
